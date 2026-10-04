@@ -61,9 +61,9 @@ export function officialCapacity(id: number): string | undefined {
   return OFFICIAL_LEVELS.find((l) => l.id === id)?.capacity;
 }
 
-/** Dev reads straight from the install (vite.config.ts); the build ships copies under assets/. */
+/** The shipped copies under assets/, byte-for-byte the install's; dev reaches them through vite.config.ts. */
 export function levelUrl(id: number): string {
-  return import.meta.env.DEV ? `/__gd/resources/levels/${id}.txt` : `assets/levels/${id}.txt`;
+  return import.meta.env.DEV ? `/__gd/assets/levels/${id}.txt` : `assets/levels/${id}.txt`;
 }
 
 export async function fetchLevel(id: number): Promise<Level> {

@@ -14,9 +14,9 @@ import { join } from "node:path";
 import { OFFICIAL_LEVELS } from "../src/assets/levels";
 import { difficultyFrame, type StringsFile } from "../src/assets/stringTypes";
 import { achievementThresholds, functionBody, levelReports, namedLevelFacts } from "../tools/assets/strings";
-import { projectPath, outPath } from "./helpers";
+import { projectPath, builtPath } from "./helpers";
 
-const ASSETS = outPath("assets");
+const ASSETS = builtPath("assets");
 const PATH = join(ASSETS, "strings.json");
 const SKIP = existsSync(PATH) ? false : "run `npm run assets` first";
 

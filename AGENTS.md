@@ -18,16 +18,19 @@ latest `main` from GitHub, builds it, and writes its own host config.
 
 ## Paths
 
-- `tools/paths.ts` is the only place that knows where things are. It reads
-  `GD_RESOURCES` (the game's `Resources` folder, read-only) and `GD_OUT` (the
-  built game) from the environment, then from `.env`. `.env` is not committed.
-- On this machine, `.env` points `GD_RESOURCES` at
+- `tools/paths.ts` is the only place that knows where things are.
+- The game's art, sound and levels are committed in `prebuilt/assets/`.
+  `npm run assets` remakes them from the install in `GD_RESOURCES` (only
+  needed when Geometry Dash updates); commit what changes. `npm run build`
+  copies them into `GD_OUT` next to the page.
+- `GD_RESOURCES` and `GD_OUT` come from the environment, then from `.env`,
+  which is not committed. On this machine `.env` points `GD_RESOURCES` at
   `D:\Proxy\Geometry Dash\Resources` and `GD_OUT` at
   `D:\Proxy\data\games\content\bundled\geometrydash`, the folder Proton Catalog
-  serves. So a local `npm run build` or `npm run assets` replaces what the
-  catalog is serving until its next update.
-- Tests read built assets through `outPath()` and the install through
-  `LEVELS_DIR`, both from `tools/paths.ts`.
+  serves. So a local `npm run build` replaces what the catalog is serving
+  until its next update.
+- Tests read built assets through `builtPath()` and the official levels
+  through `LEVELS_DIR`, both from `tools/paths.ts`.
 
 ## Host config
 

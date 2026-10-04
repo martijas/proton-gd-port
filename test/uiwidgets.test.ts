@@ -12,9 +12,9 @@ import { flatten, hitTest, listAt, listMetrics, rowRect, sliderValueAt, type Wid
 import { FRAMES, INSETS } from "../src/ui/art";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { outPath } from "./helpers";
+import { builtPath } from "./helpers";
 
-const ASSETS = outPath("assets");
+const ASSETS = builtPath("assets");
 const ART_SKIP = existsSync(join(ASSETS, "ui.json")) ? false : "run `npm run assets` first";
 
 const FLOATS = 12;

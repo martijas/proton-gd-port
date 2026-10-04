@@ -24,7 +24,7 @@ import { PlayerParticles, defFromPlist, facingOf } from "../src/render/playerPar
 import { ENTER, enterAngle, enterCode, enterFades, enterPose, enterProgress } from "../src/render/enterEffects";
 import type { ParticleFile } from "../src/assets/miscTypes";
 import type { PlayerState } from "../src/physics/types";
-import { outPath } from "./helpers";
+import { builtPath } from "./helpers";
 
 const sheet: Atlas = { name: "test", image: "test.png", w: 1000, h: 500, frames: [] };
 
@@ -303,8 +303,8 @@ test("a level cannot author the light background channel", () => {
 // says which frame shows when. Both are pinned here: the table against the
 // decompile, the clock against the frames the game's arithmetic lands on.
 
-const OBJECTS = outPath("assets/objects.json");
-const ATLAS = outPath("assets/atlas/uhd.json");
+const OBJECTS = builtPath("assets/objects.json");
+const ATLAS = builtPath("assets/atlas/uhd.json");
 const ASSETS = existsSync(OBJECTS) && existsSync(ATLAS) ? false : "run `npm run assets` first";
 
 function objectTable(): Record<string, ObjectRecord> {
@@ -884,7 +884,7 @@ test("the streak's texture is stretched along the ribbon, not repeated per segme
 // particle plists out of the install that the asset build has been shipping
 // with nothing reading them.
 
-const PARTICLES = outPath("assets/particles.json");
+const PARTICLES = builtPath("assets/particles.json");
 const NO_PARTICLES = existsSync(PARTICLES) ? false : "run `npm run assets` first";
 const SQUARE: EffectQuad = { u0: 0, v0: 0, du: 0.01, dv: 0.01, unit: 13, w: 32, h: 32 };
 

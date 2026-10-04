@@ -4,7 +4,7 @@
 //
 // Source:  $GD_RESOURCES   (read-only; never written to),
 //          and GeometryDash.exe beside it for the screen-effect shader
-// Output:  $GD_OUT/assets/   (see tools/paths.ts)
+// Output:  prebuilt/assets/   (committed; the page build copies it into GD_OUT)
 // Reports: data/{asset-build,objects-report,assets-report}.json
 //
 // Conventions the whole pipeline follows, so they only have to be learned once:

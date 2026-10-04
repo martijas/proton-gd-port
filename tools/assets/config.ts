@@ -3,13 +3,13 @@
 // is run from npm scripts, from the project root and from the editor alike.
 
 import { resolve } from "node:path";
-import { GD_OUT, GD_RESOURCES, PROJECT_ROOT } from "../paths";
+import { GD_RESOURCES, PREBUILT, PROJECT_ROOT } from "../paths";
 
 export { PROJECT_ROOT };
 /** The real install. Read-only reference; nothing is ever written here. */
 export const SRC_ROOT = GD_RESOURCES;
-/** What gets served. `assets/` under it is this tool's output. */
-export const OUT_ROOT = GD_OUT;
+/** `assets/` under it is this tool's output, committed so hosts don't need the install. */
+export const OUT_ROOT = PREBUILT;
 /** Generated data and reports that stay in the source tree. */
 export const DATA_ROOT = resolve(PROJECT_ROOT, "data");
 

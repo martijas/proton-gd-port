@@ -1,0 +1,306 @@
+{
+ "version": 1,
+ "pxPerUnit": 1,
+ "images": {
+  "circle": {
+   "image": "loose/circle.png",
+   "w": 32,
+   "h": 32
+  },
+  "gravityLine_001": {
+   "image": "loose/gravityLine_001.png",
+   "w": 1,
+   "h": 76
+  },
+  "pixel": {
+   "image": "loose/pixel.png",
+   "w": 1,
+   "h": 1
+  },
+  "shipfire02_001": {
+   "image": "loose/shipfire02_001.png",
+   "w": 46,
+   "h": 92
+  },
+  "shipfire02_002": {
+   "image": "loose/shipfire02_002.png",
+   "w": 46,
+   "h": 92
+  },
+  "shipfire02_003": {
+   "image": "loose/shipfire02_003.png",
+   "w": 46,
+   "h": 92
+  },
+  "shipfire02_004": {
+   "image": "loose/shipfire02_004.png",
+   "w": 46,
+   "h": 92
+  },
+  "shipfire02_005": {
+   "image": "loose/shipfire02_005.png",
+   "w": 46,
+   "h": 92
+  },
+  "shipfire02_006": {
+   "image": "loose/shipfire02_006.png",
+   "w": 46,
+   "h": 92
+  },
+  "shipfire02_007": {
+   "image": "loose/shipfire02_007.png",
+   "w": 46,
+   "h": 92
+  },
+  "shipfire02_008": {
+   "image": "loose/shipfire02_008.png",
+   "w": 46,
+   "h": 92
+  },
+  "shipfire02_009": {
+   "image": "loose/shipfire02_009.png",
+   "w": 46,
+   "h": 92
+  },
+  "shipfire03_001": {
+   "image": "loose/shipfire03_001.png",
+   "w": 54,
+   "h": 98
+  },
+  "shipfire03_002": {
+   "image": "loose/shipfire03_002.png",
+   "w": 54,
+   "h": 98
+  },
+  "shipfire03_003": {
+   "image": "loose/shipfire03_003.png",
+   "w": 54,
+   "h": 98
+  },
+  "shipfire03_004": {
+   "image": "loose/shipfire03_004.png",
+   "w": 54,
+   "h": 98
+  },
+  "shipfire03_005": {
+   "image": "loose/shipfire03_005.png",
+   "w": 54,
+   "h": 98
+  },
+  "shipfire03_006": {
+   "image": "loose/shipfire03_006.png",
+   "w": 54,
+   "h": 98
+  },
+  "shipfire03_007": {
+   "image": "loose/shipfire03_007.png",
+   "w": 54,
+   "h": 98
+  },
+  "shipfire03_008": {
+   "image": "loose/shipfire03_008.png",
+   "w": 54,
+   "h": 98
+  },
+  "shipfire03_009": {
+   "image": "loose/shipfire03_009.png",
+   "w": 54,
+   "h": 98
+  },
+  "shipfire03_010": {
+   "image": "loose/shipfire03_010.png",
+   "w": 54,
+   "h": 98
+  },
+  "shipfire04_001": {
+   "image": "loose/shipfire04_001.png",
+   "w": 70,
+   "h": 88
+  },
+  "shipfire04_002": {
+   "image": "loose/shipfire04_002.png",
+   "w": 70,
+   "h": 88
+  },
+  "shipfire04_003": {
+   "image": "loose/shipfire04_003.png",
+   "w": 70,
+   "h": 88
+  },
+  "shipfire04_004": {
+   "image": "loose/shipfire04_004.png",
+   "w": 70,
+   "h": 88
+  },
+  "shipfire04_005": {
+   "image": "loose/shipfire04_005.png",
+   "w": 70,
+   "h": 88
+  },
+  "shipfire04_006": {
+   "image": "loose/shipfire04_006.png",
+   "w": 70,
+   "h": 88
+  },
+  "shipfire05_001": {
+   "image": "loose/shipfire05_001.png",
+   "w": 42,
+   "h": 92
+  },
+  "shipfire05_002": {
+   "image": "loose/shipfire05_002.png",
+   "w": 42,
+   "h": 92
+  },
+  "shipfire05_003": {
+   "image": "loose/shipfire05_003.png",
+   "w": 42,
+   "h": 92
+  },
+  "shipfire05_004": {
+   "image": "loose/shipfire05_004.png",
+   "w": 42,
+   "h": 92
+  },
+  "shipfire05_005": {
+   "image": "loose/shipfire05_005.png",
+   "w": 42,
+   "h": 92
+  },
+  "shipfire05_006": {
+   "image": "loose/shipfire05_006.png",
+   "w": 42,
+   "h": 92
+  },
+  "shipfire05_007": {
+   "image": "loose/shipfire05_007.png",
+   "w": 42,
+   "h": 92
+  },
+  "shipfire05_008": {
+   "image": "loose/shipfire05_008.png",
+   "w": 42,
+   "h": 92
+  },
+  "shipfire05_009": {
+   "image": "loose/shipfire05_009.png",
+   "w": 42,
+   "h": 92
+  },
+  "shipfire05_010": {
+   "image": "loose/shipfire05_010.png",
+   "w": 42,
+   "h": 92
+  },
+  "shipfire05_011": {
+   "image": "loose/shipfire05_011.png",
+   "w": 42,
+   "h": 92
+  },
+  "shipfire05_012": {
+   "image": "loose/shipfire05_012.png",
+   "w": 42,
+   "h": 92
+  },
+  "shipfire05_013": {
+   "image": "loose/shipfire05_013.png",
+   "w": 42,
+   "h": 92
+  },
+  "shipfire05_014": {
+   "image": "loose/shipfire05_014.png",
+   "w": 42,
+   "h": 92
+  },
+  "shipfire05_015": {
+   "image": "loose/shipfire05_015.png",
+   "w": 42,
+   "h": 92
+  },
+  "shipfire05_016": {
+   "image": "loose/shipfire05_016.png",
+   "w": 42,
+   "h": 92
+  },
+  "shipfire06_001": {
+   "image": "loose/shipfire06_001.png",
+   "w": 58,
+   "h": 72
+  },
+  "shipfire06_002": {
+   "image": "loose/shipfire06_002.png",
+   "w": 58,
+   "h": 72
+  },
+  "shipfire06_003": {
+   "image": "loose/shipfire06_003.png",
+   "w": 58,
+   "h": 72
+  },
+  "shipfire06_004": {
+   "image": "loose/shipfire06_004.png",
+   "w": 58,
+   "h": 72
+  },
+  "shipfire06_005": {
+   "image": "loose/shipfire06_005.png",
+   "w": 58,
+   "h": 72
+  },
+  "square": {
+   "image": "loose/square.png",
+   "w": 32,
+   "h": 32
+  },
+  "streakDWhite": {
+   "image": "loose/streakDWhite.png",
+   "w": 64,
+   "h": 64
+  },
+  "streak_01_001": {
+   "image": "loose/streak_01_001.png",
+   "w": 32,
+   "h": 32
+  },
+  "streak_02_001": {
+   "image": "loose/streak_02_001.png",
+   "w": 32,
+   "h": 32
+  },
+  "streak_03_001": {
+   "image": "loose/streak_03_001.png",
+   "w": 64,
+   "h": 64
+  },
+  "streak_04_001": {
+   "image": "loose/streak_04_001.png",
+   "w": 60,
+   "h": 64
+  },
+  "streak_05_001": {
+   "image": "loose/streak_05_001.png",
+   "w": 30,
+   "h": 60
+  },
+  "streak_06_001": {
+   "image": "loose/streak_06_001.png",
+   "w": 64,
+   "h": 64
+  },
+  "streak_07_001": {
+   "image": "loose/streak_07_001.png",
+   "w": 60,
+   "h": 60
+  },
+  "streakb_01_001": {
+   "image": "loose/streakb_01_001.png",
+   "w": 32,
+   "h": 32
+  },
+  "sun": {
+   "image": "loose/sun.png",
+   "w": 37,
+   "h": 37
+  }
+ }
+}

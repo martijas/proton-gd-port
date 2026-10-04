@@ -19,10 +19,10 @@ import { levelSongPositionMs, songPositionMs, songState, tweenAt } from "../src/
 import { audioParams, sfxRefId, uniqueSfxId, type AudioTriggerParams } from "../src/audio/triggerAudio";
 import type { Sim, SimEvent } from "../src/physics/types";
 import type { TriggerEvent } from "../src/triggers/runtime";
-import { LEVELS_DIR, loadOfficialLevel, outPath } from "./helpers";
+import { LEVELS_DIR, loadOfficialLevel, builtPath } from "./helpers";
 import { buildLevel } from "./levelKit";
 
-const ASSETS = outPath("assets/audio");
+const ASSETS = builtPath("assets/audio");
 const SFX = join(ASSETS, "sfx");
 const SKIP = existsSync(SFX) ? false : "run `npm run assets` first";
 const LEVELS = existsSync(`${LEVELS_DIR}/1.txt`) ? false : "needs the real install";

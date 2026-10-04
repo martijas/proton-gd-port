@@ -19,11 +19,11 @@ import { buildTriggerIndex, type TriggerSpec } from "../src/triggers/spec";
 import { closestDirection, mergeRemap, ownRemap } from "../src/triggers/runtime";
 import { multipliedColorValue, pulseEnvelope } from "../src/render/colors";
 import type { ObjectsFile } from "../src/assets/objectTypes";
-import { LEVELS_DIR, loadObjectTable, loadOfficialLevel, makeSim, outPath } from "./helpers";
+import { LEVELS_DIR, loadObjectTable, loadOfficialLevel, makeSim, builtPath } from "./helpers";
 import { buildLevel, emptyLevel, makeHeader, simOn, stepN } from "./levelKit";
 import { NO_INPUT, type PlayerInput } from "../src/physics/types";
 
-const objectsPath = outPath("assets/objects.json");
+const objectsPath = builtPath("assets/objects.json");
 const SKIP = existsSync(objectsPath) ? false : "run `npm run assets` first";
 const LEVELS = existsSync(`${LEVELS_DIR}/1.txt`) ? false : "needs the real install";
 

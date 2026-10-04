@@ -17,11 +17,11 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ObjectsFile } from "../src/assets/objectTypes";
-import { outPath } from "./paths";
+import { builtPath } from "./paths";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
-const ASSETS = outPath("assets");
+const ASSETS = builtPath("assets");
 
 /**
  * The colour triggers customSetup does not name, by the channel each one

@@ -10,11 +10,11 @@ import type { Level } from "../src/level/types";
 import type { ObjectDef, ObjectTable, Sim, SimOptions } from "../src/physics/types";
 import { createSim } from "../src/physics/index";
 import { buildObjectTable } from "../src/physics/objects";
-import { LEVELS_DIR, outPath } from "../tools/paths";
+import { builtPath, LEVELS_DIR } from "../tools/paths";
 import type { Macro } from "./bot";
 
-/** The real install is the reference; levels are read straight out of it. */
-export { LEVELS_DIR, outPath };
+/** The official levels as shipped (byte-for-byte the install's), and the rest of the built assets. */
+export { builtPath, LEVELS_DIR };
 
 /** 1–22 main levels, 3001 The Challenge, 5001–5004 The Tower (platformer). */
 export const OFFICIAL_LEVEL_IDS: readonly number[] = [

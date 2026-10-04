@@ -5,12 +5,12 @@
  *
  * The production build sits next to them, so the URL is just `assets/...`. In
  * dev the page is served from the source tree, so it reaches the same built
- * files through the dev server's /__gd/out/ mount (vite.config.ts). Both
- * branches therefore read exactly the bytes that ship, which is the point: a
- * debug page that reads the originals instead would not be checking the
- * pipeline at all.
+ * files (prebuilt/assets) through the dev server's /__gd/assets/ mount
+ * (vite.config.ts). Both branches therefore read exactly the bytes that ship,
+ * which is the point: a debug page that reads the originals instead would not
+ * be checking the pipeline at all.
  */
-const DEV_ASSETS = "/__gd/out/assets";
+const DEV_ASSETS = "/__gd/assets";
 
 export function assetUrl(path: string): string {
   const clean = path.replace(/^\/+/, "");

@@ -1,0 +1,393 @@
+{
+ "version": 1,
+ "page": "ui/ui-0.png",
+ "pageWidth": 2048,
+ "pageHeight": 2048,
+ "images": {
+  "GJ_gradientBG": {
+   "image": "ui/ui-0.png",
+   "x": 2,
+   "y": 2,
+   "w": 60,
+   "h": 640,
+   "pxPerUnit": 2
+  },
+  "chatFont": {
+   "image": "ui/ui-0.png",
+   "x": 66,
+   "y": 2,
+   "w": 512,
+   "h": 512,
+   "pxPerUnit": 4
+  },
+  "chest_02_02_001.png": {
+   "image": "ui/ui-0.png",
+   "x": 582,
+   "y": 2,
+   "w": 482,
+   "h": 386,
+   "pxPerUnit": 4
+  },
+  "GJ_squareB_01": {
+   "image": "ui/ui-0.png",
+   "x": 1068,
+   "y": 2,
+   "w": 344,
+   "h": 344,
+   "pxPerUnit": 4
+  },
+  "GJ_square01": {
+   "image": "ui/ui-0.png",
+   "x": 1416,
+   "y": 2,
+   "w": 320,
+   "h": 320,
+   "pxPerUnit": 4
+  },
+  "GJ_square02": {
+   "image": "ui/ui-0.png",
+   "x": 1416,
+   "y": 326,
+   "w": 320,
+   "h": 320,
+   "pxPerUnit": 4
+  },
+  "GJ_square03": {
+   "image": "ui/ui-0.png",
+   "x": 1068,
+   "y": 350,
+   "w": 320,
+   "h": 320,
+   "pxPerUnit": 4
+  },
+  "GJ_square04": {
+   "image": "ui/ui-0.png",
+   "x": 582,
+   "y": 392,
+   "w": 320,
+   "h": 320,
+   "pxPerUnit": 4
+  },
+  "GJ_square05": {
+   "image": "ui/ui-0.png",
+   "x": 66,
+   "y": 518,
+   "w": 320,
+   "h": 320,
+   "pxPerUnit": 4
+  },
+  "GJ_square06": {
+   "image": "ui/ui-0.png",
+   "x": 1392,
+   "y": 650,
+   "w": 320,
+   "h": 320,
+   "pxPerUnit": 4
+  },
+  "GJ_square07": {
+   "image": "ui/ui-0.png",
+   "x": 1716,
+   "y": 650,
+   "w": 320,
+   "h": 320,
+   "pxPerUnit": 4
+  },
+  "square02_001": {
+   "image": "ui/ui-0.png",
+   "x": 906,
+   "y": 674,
+   "w": 320,
+   "h": 320,
+   "pxPerUnit": 4
+  },
+  "square02b_001": {
+   "image": "ui/ui-0.png",
+   "x": 390,
+   "y": 716,
+   "w": 320,
+   "h": 320,
+   "pxPerUnit": 4
+  },
+  "square04_001": {
+   "image": "ui/ui-0.png",
+   "x": 2,
+   "y": 842,
+   "w": 320,
+   "h": 320,
+   "pxPerUnit": 4
+  },
+  "chest_01_02_001.png": {
+   "image": "ui/ui-0.png",
+   "x": 1230,
+   "y": 974,
+   "w": 385,
+   "h": 309,
+   "pxPerUnit": 4
+  },
+  "GJ_logo_001.png": {
+   "image": "ui/ui-0.png",
+   "x": 2,
+   "y": 1287,
+   "w": 1702,
+   "h": 194,
+   "pxPerUnit": 4
+  },
+  "GJ_button_01": {
+   "image": "ui/ui-0.png",
+   "x": 1708,
+   "y": 974,
+   "w": 160,
+   "h": 160,
+   "pxPerUnit": 4
+  },
+  "GJ_button_02": {
+   "image": "ui/ui-0.png",
+   "x": 1872,
+   "y": 974,
+   "w": 160,
+   "h": 160,
+   "pxPerUnit": 4
+  },
+  "GJ_button_03": {
+   "image": "ui/ui-0.png",
+   "x": 1708,
+   "y": 1138,
+   "w": 160,
+   "h": 160,
+   "pxPerUnit": 4
+  },
+  "GJ_button_04": {
+   "image": "ui/ui-0.png",
+   "x": 1872,
+   "y": 1138,
+   "w": 160,
+   "h": 160,
+   "pxPerUnit": 4
+  },
+  "GJ_button_05": {
+   "image": "ui/ui-0.png",
+   "x": 1708,
+   "y": 1302,
+   "w": 160,
+   "h": 160,
+   "pxPerUnit": 4
+  },
+  "GJ_button_06": {
+   "image": "ui/ui-0.png",
+   "x": 1872,
+   "y": 1302,
+   "w": 160,
+   "h": 160,
+   "pxPerUnit": 4
+  },
+  "square02_small": {
+   "image": "ui/ui-0.png",
+   "x": 1708,
+   "y": 1466,
+   "w": 160,
+   "h": 160,
+   "pxPerUnit": 4
+  },
+  "square02b_small": {
+   "image": "ui/ui-0.png",
+   "x": 1872,
+   "y": 1466,
+   "w": 160,
+   "h": 160,
+   "pxPerUnit": 4
+  },
+  "sliderthumb": {
+   "image": "ui/ui-0.png",
+   "x": 2,
+   "y": 1485,
+   "w": 152,
+   "h": 152,
+   "pxPerUnit": 4
+  },
+  "sliderthumbsel": {
+   "image": "ui/ui-0.png",
+   "x": 158,
+   "y": 1485,
+   "w": 152,
+   "h": 152,
+   "pxPerUnit": 4
+  },
+  "cocos2DxLogo.png": {
+   "image": "ui/ui-0.png",
+   "x": 314,
+   "y": 1485,
+   "w": 360,
+   "h": 96,
+   "pxPerUnit": 4
+  },
+  "GJ_progressBar_001": {
+   "image": "ui/ui-0.png",
+   "x": 314,
+   "y": 1585,
+   "w": 1360,
+   "h": 80,
+   "pxPerUnit": 4
+  },
+  "gravityLine_001": {
+   "image": "ui/ui-0.png",
+   "x": 2040,
+   "y": 2,
+   "w": 1,
+   "h": 76,
+   "pxPerUnit": 1
+  },
+  "slidergroove": {
+   "image": "ui/ui-0.png",
+   "x": 2,
+   "y": 1669,
+   "w": 840,
+   "h": 64,
+   "pxPerUnit": 4
+  },
+  "slidergroove2": {
+   "image": "ui/ui-0.png",
+   "x": 846,
+   "y": 1669,
+   "w": 840,
+   "h": 64,
+   "pxPerUnit": 4
+  },
+  "streakDWhite": {
+   "image": "ui/ui-0.png",
+   "x": 1690,
+   "y": 1630,
+   "w": 64,
+   "h": 64,
+   "pxPerUnit": 1
+  },
+  "streak_03_001": {
+   "image": "ui/ui-0.png",
+   "x": 1758,
+   "y": 1630,
+   "w": 64,
+   "h": 64,
+   "pxPerUnit": 1
+  },
+  "streak_04_001": {
+   "image": "ui/ui-0.png",
+   "x": 1826,
+   "y": 1630,
+   "w": 60,
+   "h": 64,
+   "pxPerUnit": 1
+  },
+  "streak_06_001": {
+   "image": "ui/ui-0.png",
+   "x": 1890,
+   "y": 1630,
+   "w": 64,
+   "h": 64,
+   "pxPerUnit": 1
+  },
+  "streak_05_001": {
+   "image": "ui/ui-0.png",
+   "x": 1958,
+   "y": 1630,
+   "w": 30,
+   "h": 60,
+   "pxPerUnit": 1
+  },
+  "streak_07_001": {
+   "image": "ui/ui-0.png",
+   "x": 1958,
+   "y": 1694,
+   "w": 60,
+   "h": 60,
+   "pxPerUnit": 1
+  },
+  "slidergroove_02": {
+   "image": "ui/ui-0.png",
+   "x": 2,
+   "y": 1737,
+   "w": 840,
+   "h": 44,
+   "pxPerUnit": 4
+  },
+  "circle": {
+   "image": "ui/ui-0.png",
+   "x": 1690,
+   "y": 1698,
+   "w": 32,
+   "h": 32,
+   "pxPerUnit": 1
+  },
+  "sliderBar": {
+   "image": "ui/ui-0.png",
+   "x": 1726,
+   "y": 1698,
+   "w": 128,
+   "h": 32,
+   "pxPerUnit": 4
+  },
+  "sliderBar2": {
+   "image": "ui/ui-0.png",
+   "x": 1690,
+   "y": 1734,
+   "w": 128,
+   "h": 32,
+   "pxPerUnit": 4
+  },
+  "square": {
+   "image": "ui/ui-0.png",
+   "x": 1858,
+   "y": 1698,
+   "w": 32,
+   "h": 32,
+   "pxPerUnit": 1
+  },
+  "streak_01_001": {
+   "image": "ui/ui-0.png",
+   "x": 1894,
+   "y": 1698,
+   "w": 32,
+   "h": 32,
+   "pxPerUnit": 1
+  },
+  "streak_02_001": {
+   "image": "ui/ui-0.png",
+   "x": 1822,
+   "y": 1734,
+   "w": 32,
+   "h": 32,
+   "pxPerUnit": 1
+  },
+  "streakb_01_001": {
+   "image": "ui/ui-0.png",
+   "x": 1858,
+   "y": 1734,
+   "w": 32,
+   "h": 32,
+   "pxPerUnit": 1
+  },
+  "pixel": {
+   "image": "ui/ui-0.png",
+   "x": 2040,
+   "y": 82,
+   "w": 2,
+   "h": 2,
+   "pxPerUnit": 2
+  }
+ },
+ "packedFonts": [
+  "chatFont"
+ ],
+ "menu": {
+  "background": {
+   "image": "ui/menu-bg.png",
+   "w": 1024,
+   "h": 1024,
+   "pxPerUnit": 2
+  },
+  "ground": {
+   "image": "ui/menu-ground.png",
+   "w": 256,
+   "h": 256,
+   "pxPerUnit": 2
+  }
+ }
+}

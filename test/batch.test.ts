@@ -34,9 +34,9 @@ import { BLEND, INSTANCE_BYTES, INSTANCE_FLOATS } from "../src/engine/gl/spriteB
 import type { TriggerRuntime } from "../src/triggers/runtime";
 import { LAYER_Z, OBJECT_Z } from "../src/triggers/shaderState";
 import { makeHeader } from "./levelKit";
-import { outPath } from "./helpers";
+import { builtPath } from "./helpers";
 
-const ASSETS = outPath("assets");
+const ASSETS = builtPath("assets");
 const ASSETS_SKIP = existsSync(`${ASSETS}/objects.json`) && existsSync(`${ASSETS}/atlas/hd.json`) ? false : "run `npm run assets` first";
 
 // --- the nodes ------------------------------------------------------------------

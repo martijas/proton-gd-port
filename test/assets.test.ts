@@ -15,9 +15,9 @@ import type { ObjectsFile } from "../src/assets/objectTypes";
 import { buildObjectTable, objectTableFromRecords } from "../src/physics/objects";
 import type { ObjectDef } from "../src/physics/types";
 import { GAME_ANIMATIONS } from "../src/assets/gameAnimations";
-import { loadObjectTable, projectPath, outPath } from "./helpers";
+import { loadObjectTable, projectPath, builtPath } from "./helpers";
 
-const ASSETS = outPath("assets");
+const ASSETS = builtPath("assets");
 const objectsPath = join(ASSETS, "objects.json");
 const atlasPath = join(ASSETS, "atlas/uhd.json");
 const iconsPath = join(ASSETS, "icons/icons.json");

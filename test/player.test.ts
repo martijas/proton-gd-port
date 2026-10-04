@@ -17,9 +17,9 @@ import { strongColor } from "../src/render/colors";
 import { INSTANCE_FLOATS } from "../src/engine/gl/spriteBatch";
 import type { GameMode } from "../src/level/types";
 import type { PlayerState } from "../src/physics/types";
-import { outPath } from "./helpers";
+import { builtPath } from "./helpers";
 
-const iconsPath = outPath("assets/icons/icons.json");
+const iconsPath = builtPath("assets/icons/icons.json");
 const SKIP = existsSync(iconsPath) ? false : "run `npm run assets` first";
 
 function loadIcons(): IconSet {

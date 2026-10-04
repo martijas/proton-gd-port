@@ -1,0 +1,570 @@
+{
+ "version": 1,
+ "pxPerUnit": 4,
+ "backgrounds": {
+  "1": {
+   "image": "scenery/bg_01.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "2": {
+   "image": "scenery/bg_02.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "3": {
+   "image": "scenery/bg_03.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "4": {
+   "image": "scenery/bg_04.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "5": {
+   "image": "scenery/bg_05.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "6": {
+   "image": "scenery/bg_06.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "7": {
+   "image": "scenery/bg_07.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "8": {
+   "image": "scenery/bg_08.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "9": {
+   "image": "scenery/bg_09.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "10": {
+   "image": "scenery/bg_10.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "11": {
+   "image": "scenery/bg_11.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "12": {
+   "image": "scenery/bg_12.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "13": {
+   "image": "scenery/bg_13.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "14": {
+   "image": "scenery/bg_14.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "15": {
+   "image": "scenery/bg_15.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "16": {
+   "image": "scenery/bg_16.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "17": {
+   "image": "scenery/bg_17.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "18": {
+   "image": "scenery/bg_18.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "19": {
+   "image": "scenery/bg_19.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "20": {
+   "image": "scenery/bg_20.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "21": {
+   "image": "scenery/bg_21.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "22": {
+   "image": "scenery/bg_22.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "23": {
+   "image": "scenery/bg_23.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "24": {
+   "image": "scenery/bg_24.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "25": {
+   "image": "scenery/bg_25.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "26": {
+   "image": "scenery/bg_26.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "27": {
+   "image": "scenery/bg_27.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "28": {
+   "image": "scenery/bg_28.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "29": {
+   "image": "scenery/bg_29.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "30": {
+   "image": "scenery/bg_30.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "31": {
+   "image": "scenery/bg_31.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "32": {
+   "image": "scenery/bg_32.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "33": {
+   "image": "scenery/bg_33.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "34": {
+   "image": "scenery/bg_34.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "35": {
+   "image": "scenery/bg_35.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "36": {
+   "image": "scenery/bg_36.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "37": {
+   "image": "scenery/bg_37.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "38": {
+   "image": "scenery/bg_38.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "39": {
+   "image": "scenery/bg_39.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "40": {
+   "image": "scenery/bg_40.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "41": {
+   "image": "scenery/bg_41.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "42": {
+   "image": "scenery/bg_42.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "43": {
+   "image": "scenery/bg_43.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "44": {
+   "image": "scenery/bg_44.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "45": {
+   "image": "scenery/bg_45.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "46": {
+   "image": "scenery/bg_46.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "47": {
+   "image": "scenery/bg_47.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "48": {
+   "image": "scenery/bg_48.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "49": {
+   "image": "scenery/bg_49.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "50": {
+   "image": "scenery/bg_50.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "51": {
+   "image": "scenery/bg_51.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "52": {
+   "image": "scenery/bg_52.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "53": {
+   "image": "scenery/bg_53.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "54": {
+   "image": "scenery/bg_54.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "55": {
+   "image": "scenery/bg_55.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "56": {
+   "image": "scenery/bg_56.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "57": {
+   "image": "scenery/bg_57.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "58": {
+   "image": "scenery/bg_58.png",
+   "w": 2048,
+   "h": 2048
+  },
+  "59": {
+   "image": "scenery/bg_59.png",
+   "w": 2048,
+   "h": 2048
+  }
+ },
+ "grounds": {
+  "1": {
+   "base": {
+    "image": "scenery/ground_01.png",
+    "w": 512,
+    "h": 512
+   }
+  },
+  "2": {
+   "base": {
+    "image": "scenery/ground_02.png",
+    "w": 512,
+    "h": 512
+   }
+  },
+  "3": {
+   "base": {
+    "image": "scenery/ground_03.png",
+    "w": 512,
+    "h": 512
+   }
+  },
+  "4": {
+   "base": {
+    "image": "scenery/ground_04.png",
+    "w": 512,
+    "h": 512
+   }
+  },
+  "5": {
+   "base": {
+    "image": "scenery/ground_05.png",
+    "w": 512,
+    "h": 512
+   }
+  },
+  "6": {
+   "base": {
+    "image": "scenery/ground_06.png",
+    "w": 512,
+    "h": 512
+   }
+  },
+  "7": {
+   "base": {
+    "image": "scenery/ground_07.png",
+    "w": 512,
+    "h": 512
+   }
+  },
+  "8": {
+   "base": {
+    "image": "scenery/ground_08.png",
+    "w": 512,
+    "h": 442
+   },
+   "detail": {
+    "image": "scenery/ground_08_2.png",
+    "w": 512,
+    "h": 146
+   }
+  },
+  "9": {
+   "base": {
+    "image": "scenery/ground_09.png",
+    "w": 512,
+    "h": 450
+   },
+   "detail": {
+    "image": "scenery/ground_09_2.png",
+    "w": 512,
+    "h": 86
+   }
+  },
+  "10": {
+   "base": {
+    "image": "scenery/ground_10.png",
+    "w": 512,
+    "h": 466
+   },
+   "detail": {
+    "image": "scenery/ground_10_2.png",
+    "w": 512,
+    "h": 50
+   }
+  },
+  "11": {
+   "base": {
+    "image": "scenery/ground_11.png",
+    "w": 512,
+    "h": 448
+   },
+   "detail": {
+    "image": "scenery/ground_11_2.png",
+    "w": 512,
+    "h": 66
+   }
+  },
+  "12": {
+   "base": {
+    "image": "scenery/ground_12.png",
+    "w": 512,
+    "h": 472
+   },
+   "detail": {
+    "image": "scenery/ground_12_2.png",
+    "w": 512,
+    "h": 88
+   }
+  },
+  "13": {
+   "base": {
+    "image": "scenery/ground_13.png",
+    "w": 512,
+    "h": 460
+   },
+   "detail": {
+    "image": "scenery/ground_13_2.png",
+    "w": 512,
+    "h": 84
+   }
+  },
+  "14": {
+   "base": {
+    "image": "scenery/ground_14.png",
+    "w": 512,
+    "h": 460
+   },
+   "detail": {
+    "image": "scenery/ground_14_2.png",
+    "w": 512,
+    "h": 140
+   }
+  },
+  "15": {
+   "base": {
+    "image": "scenery/ground_15.png",
+    "w": 512,
+    "h": 512
+   },
+   "detail": {
+    "image": "scenery/ground_15_2.png",
+    "w": 512,
+    "h": 296
+   }
+  },
+  "16": {
+   "base": {
+    "image": "scenery/ground_16.png",
+    "w": 512,
+    "h": 512
+   },
+   "detail": {
+    "image": "scenery/ground_16_2.png",
+    "w": 512,
+    "h": 332
+   }
+  },
+  "17": {
+   "base": {
+    "image": "scenery/ground_17.png",
+    "w": 512,
+    "h": 512
+   },
+   "detail": {
+    "image": "scenery/ground_17_2.png",
+    "w": 512,
+    "h": 368
+   }
+  },
+  "18": {
+   "base": {
+    "image": "scenery/ground_18.png",
+    "w": 512,
+    "h": 492
+   },
+   "detail": {
+    "image": "scenery/ground_18_2.png",
+    "w": 512,
+    "h": 392
+   }
+  },
+  "19": {
+   "base": {
+    "image": "scenery/ground_19.png",
+    "w": 512,
+    "h": 512
+   },
+   "detail": {
+    "image": "scenery/ground_19_2.png",
+    "w": 512,
+    "h": 422
+   }
+  },
+  "20": {
+   "base": {
+    "image": "scenery/ground_20.png",
+    "w": 512,
+    "h": 512
+   },
+   "detail": {
+    "image": "scenery/ground_20_2.png",
+    "w": 512,
+    "h": 498
+   }
+  },
+  "21": {
+   "base": {
+    "image": "scenery/ground_21.png",
+    "w": 512,
+    "h": 512
+   },
+   "detail": {
+    "image": "scenery/ground_21_2.png",
+    "w": 512,
+    "h": 344
+   }
+  },
+  "22": {
+   "base": {
+    "image": "scenery/ground_22.png",
+    "w": 512,
+    "h": 512
+   },
+   "detail": {
+    "image": "scenery/ground_22_2.png",
+    "w": 512,
+    "h": 400
+   }
+  }
+ },
+ "foregrounds": {
+  "1": {
+   "base": {
+    "image": "scenery/fg_01.png",
+    "w": 1024,
+    "h": 344
+   },
+   "detail": {
+    "image": "scenery/fg_01_2.png",
+    "w": 1024,
+    "h": 304
+   }
+  },
+  "2": {
+   "base": {
+    "image": "scenery/fg_02.png",
+    "w": 1024,
+    "h": 326
+   },
+   "detail": {
+    "image": "scenery/fg_02_2.png",
+    "w": 1024,
+    "h": 326
+   }
+  },
+  "3": {
+   "base": {
+    "image": "scenery/fg_03.png",
+    "w": 1024,
+    "h": 324
+   },
+   "detail": {
+    "image": "scenery/fg_03_2.png",
+    "w": 1024,
+    "h": 326
+   }
+  }
+ }
+}

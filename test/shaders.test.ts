@@ -48,11 +48,11 @@ import {
 } from "../src/triggers/shaderState";
 import { parseTrigger, type TriggerSpec } from "../src/triggers/spec";
 import { missingUniforms, SHADER_UNIFORMS, stringAround } from "../tools/assets/shaders";
-import { LEVELS_DIR, loadOfficialLevel, makeSim, outPath } from "./helpers";
+import { LEVELS_DIR, loadOfficialLevel, makeSim, builtPath } from "./helpers";
 import { buildLevel, emptyLevel, makeHeader, STANDING_Y } from "./levelKit";
 
 const LEVELS = existsSync(`${LEVELS_DIR}/1.txt`) ? false : "needs the real install";
-const SHADER_ASSET = outPath("assets/shaderlayer.json");
+const SHADER_ASSET = builtPath("assets/shaderlayer.json");
 const NO_SHADER = existsSync(SHADER_ASSET) ? false : "run `npm run assets` first";
 
 /** A shader trigger with these keys, as the level decoder would hand it over. */

@@ -4,35 +4,32 @@ A browser port of Geometry Dash 2.2, written from scratch in TypeScript and
 WebGL2. It ships in [Proton Catalog](https://github.com/martijas), and anyone
 can host their own copy.
 
-The game's art, sound and levels are **not** in this repository. They are
-built from your own Geometry Dash install (the Steam version's `Resources`
-folder), which is only ever read.
+The game's art, sound and levels are in `prebuilt/assets/`, already built from
+Geometry Dash 2.2's own files, so hosting it needs nothing but this repository.
 
 ## Host it yourself
 
-You need Node 20 or newer and a Geometry Dash 2.2 install.
+You need Node 20 or newer.
 
 ```
 git clone https://github.com/martijas/proton-gd-port.git
 cd proton-gd-port
 npm ci
+npm run build      # the page, its scripts and a copy of prebuilt/assets, into dist/
+npm start          # serves it on http://localhost:8080 (PORT to change)
 ```
 
-Tell the build where the install is. Make a `.env` file in the project folder
-(or set the same names in the environment):
+To build somewhere other than `dist/`, set `GD_OUT` in the environment or in a
+`.env` file in the project folder.
+
+### Remaking the assets
+
+Only needed when Geometry Dash itself updates. Point `GD_RESOURCES` at the
+install's `Resources` folder (with `GeometryDash.exe` beside it), run
+`npm run assets`, and commit what changed in `prebuilt/assets/`.
 
 ```
 GD_RESOURCES=C:/Program Files (x86)/Steam/steamapps/common/Geometry Dash/Resources
-# Where the built game goes. Optional; defaults to dist/.
-GD_OUT=dist
-```
-
-Then build and run it:
-
-```
-npm run assets     # art, sound and levels from the install (takes a while the first time)
-npm run build      # the page and its scripts
-npm start          # serves it on http://localhost:8080 (PORT to change)
 ```
 
 `npm start` is a small server with no dependencies. It serves the built folder
@@ -73,16 +70,15 @@ Players can see both settings under Settings > Server, but can't change them.
 
 ```
 npm run dev       dev server on :5199 (/api is passed to GD_DEV_API, default http://localhost:3000)
-npm run build     writes index.html, the debug pages and js/ into GD_OUT
-npm run assets    rebuilds GD_OUT/assets/ from the install
+npm run build     writes index.html, the debug pages, js/ and a copy of prebuilt/assets into GD_OUT
+npm run assets    rebuilds prebuilt/assets/ from the install in GD_RESOURCES
 npm start         serves GD_OUT with the level-server tunnel
 npm test          decoder, physics, object table, triggers and asset checks
 npm run bot       the autoplayer (see test/macros/README.md)
 npm run triggers  how much of the trigger set is handled, weighted by use
 ```
 
-Tests that need the install or the built assets read them from
-`GD_RESOURCES` and `GD_OUT`; most of them skip themselves when those aren't there.
+The tests read the built assets and the official levels from `prebuilt/assets/`.
 
 `index.html` is the game. `debug.html?level=<id>` plays a level with the
 physics readout; add `&audio=1` for sound, `&macro=1` to replay the saved

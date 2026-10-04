@@ -27,12 +27,12 @@ import { designSize, pointerToUi, viewportFor, VIEW_UNITS_HIGH, VIEW_UNITS_WIDE 
 import { Game } from "../src/game/game";
 import { Camera } from "../src/render/camera";
 import { defaultSave } from "../src/save/schema";
-import { loadObjectTable, outPath } from "./helpers";
+import { loadObjectTable, builtPath } from "./helpers";
 import { emptyLevel, makeHeader, stepN } from "./levelKit";
 import { createSim } from "../src/physics/index";
 import { NO_INPUT, type Sim } from "../src/physics/types";
 
-const FONTS = outPath("assets/fonts/fonts.json");
+const FONTS = builtPath("assets/fonts/fonts.json");
 const SKIP = existsSync(FONTS) ? false : "run `npm run assets` first";
 
 function fonts(): FontFile {

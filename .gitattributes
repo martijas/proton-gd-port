@@ -1,0 +1,6 @@
+# The game's files are stored byte-for-byte: the level files carry stray NUL
+# bytes and the tests compare hashes, so no line-ending conversion here.
+prebuilt/** -text
+# The asset tool reads the decompile and the reference tables by position, so
+# a checkout must not change their line endings either.
+data/ref/** -text

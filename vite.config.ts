@@ -1,15 +1,16 @@
 import { spawn } from "node:child_process";
-import { copyFileSync, createReadStream, existsSync, mkdirSync, rmSync, statSync } from "node:fs";
-import { dirname, extname, normalize, resolve, sep } from "node:path";
+import { copyFileSync, createReadStream, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
-import { GD_OUT, GD_RESOURCES } from "./tools/paths";
+import { builtPath, GD_OUT } from "./tools/paths";
 
 // The build lands in GD_OUT (tools/paths.ts), which is served as plain static
-// files. assets/ inside that folder is produced by tools/build-assets.ts, not
-// Vite, which is why emptyOutDir stays off.
+// files. assets/ inside that folder is a copy of the committed prebuilt/assets
+// (made by tools/build-assets.ts, not Vite), which is why emptyOutDir stays off.
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = GD_OUT;
+const prebuiltAssets = builtPath("assets");
 
 const TYPES: Record<string, string> = {
   ".json": "application/json",
@@ -21,16 +22,9 @@ const TYPES: Record<string, string> = {
   ".fnt": "text/plain; charset=utf-8",
 };
 
-/**
- * In dev, serves the built assets at /__gd/out/ and the install at
- * /__gd/resources/ (src/assets/paths.ts, levels.ts). Both folders can sit on
- * another drive, which Vite's /@fs/ cannot reach on Windows.
- */
+/** In dev, serves prebuilt/assets at /__gd/assets/ (src/assets/paths.ts, levels.ts). */
 function devFolders(): Plugin {
-  const mounts: [string, string][] = [
-    ["/__gd/out/", GD_OUT],
-    ["/__gd/resources/", GD_RESOURCES],
-  ];
+  const mounts: [string, string][] = [["/__gd/assets/", prebuiltAssets]];
   return {
     name: "dev-folders",
     apply: "serve",
@@ -61,6 +55,42 @@ function hostConfig(): Plugin {
     closeBundle() {
       mkdirSync(outDir, { recursive: true });
       copyFileSync(resolve(here, "host-config.json"), resolve(outDir, "host-config.json"));
+    },
+  };
+}
+
+/**
+ * Mirrors prebuilt/assets into GD_OUT/assets: copies what is new or changed
+ * (by size and time) and removes what prebuilt/ no longer has, so a rebuild
+ * into a folder that already holds the assets costs almost nothing.
+ */
+function mirrorDir(from: string, to: string): void {
+  mkdirSync(to, { recursive: true });
+  const wanted = new Set<string>();
+  for (const entry of readdirSync(from, { withFileTypes: true })) {
+    wanted.add(entry.name);
+    const src = join(from, entry.name);
+    const dst = join(to, entry.name);
+    if (entry.isDirectory()) {
+      mirrorDir(src, dst);
+      continue;
+    }
+    const a = statSync(src);
+    const b = existsSync(dst) ? statSync(dst) : null;
+    if (!b || b.size !== a.size || b.mtimeMs < a.mtimeMs) copyFileSync(src, dst);
+  }
+  for (const name of readdirSync(to)) {
+    if (!wanted.has(name)) rmSync(join(to, name), { recursive: true, force: true });
+  }
+}
+
+function copyAssets(): Plugin {
+  return {
+    name: "copy-assets",
+    apply: "build",
+    closeBundle() {
+      if (!existsSync(prebuiltAssets)) throw new Error(`${prebuiltAssets} is missing. Run "npm run assets" to make it.`);
+      if (resolve(prebuiltAssets) !== resolve(outDir, "assets")) mirrorDir(prebuiltAssets, resolve(outDir, "assets"));
     },
   };
 }
@@ -125,7 +155,7 @@ function manualMacroSave(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [cleanScripts(), manualMacroSave(), devFolders(), hostConfig()],
+  plugins: [cleanScripts(), manualMacroSave(), devFolders(), hostConfig(), copyAssets()],
   root: here,
   base: "./",
   publicDir: false,

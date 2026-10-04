@@ -37,9 +37,9 @@ import { BLEND, INSTANCE_BYTES } from "../src/engine/gl/spriteBatch";
 import { NO_INPUT } from "../src/physics/types";
 import type { TriggerRuntime } from "../src/triggers/runtime";
 import { STANDING_Y, emptyLevel, makeHeader, type Placed } from "./levelKit";
-import { makeSim, outPath } from "./helpers";
+import { makeSim, builtPath } from "./helpers";
 
-const OBJECTS_PATH = outPath("assets/objects.json");
+const OBJECTS_PATH = builtPath("assets/objects.json");
 const OBJECTS_SKIP = existsSync(OBJECTS_PATH) ? false : "run `npm run assets` first";
 
 function entry(id: number, over: Partial<ColorChannel> = {}): ColorChannel {

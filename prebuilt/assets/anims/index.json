@@ -1,0 +1,156 @@
+{
+ "version": 1,
+ "entities": {
+  "Robot": {
+   "file": "anims/Robot.json",
+   "animations": [
+    "run3",
+    "run2",
+    "run",
+    "jump_start",
+    "jump_loop",
+    "fall_start",
+    "fall_loop",
+    "idle",
+    "idle01",
+    "idle02"
+   ],
+   "frames": 142
+  },
+  "Spider": {
+   "file": "anims/Spider.json",
+   "animations": [
+    "idle01",
+    "idle02",
+    "fall_loop",
+    "run",
+    "run2",
+    "walk",
+    "idle",
+    "jump"
+   ],
+   "frames": 63
+  },
+  "GJBeast01": {
+   "file": "anims/GJBeast01.json",
+   "animations": [
+    "bite",
+    "attack01",
+    "attack01_loop",
+    "attack01_end",
+    "idle01"
+   ],
+   "frames": 40
+  },
+  "GJBeast02": {
+   "file": "anims/GJBeast02.json",
+   "animations": [
+    "idle01",
+    "idle02"
+   ],
+   "frames": 18
+  },
+  "GJBeast03": {
+   "file": "anims/GJBeast03.json",
+   "animations": [
+    "idle01",
+    "idle02"
+   ],
+   "frames": 18
+  },
+  "GJBeast04": {
+   "file": "anims/GJBeast04.json",
+   "animations": [
+    "idle01",
+    "idle02",
+    "idle03",
+    "attack01",
+    "attack02",
+    "attack02_loop",
+    "attack02_end",
+    "sleep",
+    "sleep_loop",
+    "sleep_end"
+   ],
+   "frames": 96
+  },
+  "GJBeast05": {
+   "file": "anims/GJBeast05.json",
+   "animations": [
+    "idle01",
+    "idle02",
+    "idle03",
+    "toAttack01",
+    "attack01",
+    "attack02",
+    "toAttack03",
+    "attack03",
+    "fromAttack03"
+   ],
+   "frames": 89
+  },
+  "BlackSludge": {
+   "file": "anims/BlackSludge.json",
+   "animations": [
+    "loop"
+   ],
+   "frames": 11
+  },
+  "GJShopKeeper": {
+   "file": "anims/GJShopKeeper.json",
+   "animations": [
+    "idle00",
+    "idle01",
+    "idle02",
+    "idle03",
+    "react01",
+    "static"
+   ],
+   "frames": 99
+  },
+  "GJShopKeeper2": {
+   "file": "anims/GJShopKeeper2.json",
+   "animations": [
+    "idle00",
+    "idle01",
+    "idle02",
+    "idle03",
+    "static"
+   ],
+   "frames": 85
+  },
+  "GJShopKeeper3": {
+   "file": "anims/GJShopKeeper3.json",
+   "animations": [
+    "idle00",
+    "idle01",
+    "idle02",
+    "idle03",
+    "static"
+   ],
+   "frames": 85
+  },
+  "GJShopKeeper4": {
+   "file": "anims/GJShopKeeper4.json",
+   "animations": [
+    "idle00",
+    "idle01",
+    "idle02",
+    "idle03",
+    "static"
+   ],
+   "frames": 85
+  },
+  "GJShopKeeper5": {
+   "file": "anims/GJShopKeeper5.json",
+   "animations": [
+    "idle00",
+    "idle01",
+    "idle02",
+    "idle03",
+    "static"
+   ],
+   "frames": 85
+  }
+ }
+}
