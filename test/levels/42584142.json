@@ -1,0 +1,27 @@
+{
+ "id": 42584142,
+ "name": "Bloodlust",
+ "description": "Your thirst for blood continues? Very well, let the blood spill. Let the demons feed off your unfortunate soul...",
+ "author": "Knobbelboy",
+ "face": 10,
+ "stars": 10,
+ "demon": true,
+ "featured": true,
+ "epic": 1,
+ "downloads": 61665935,
+ "likes": 1274687,
+ "length": 4,
+ "coins": 0,
+ "verifiedCoins": false,
+ "twoPlayer": false,
+ "objects": 65535,
+ "version": 3,
+ "song": {
+  "kind": "custom",
+  "id": 467339,
+  "name": "At the Speed of Light",
+  "artist": "Dimrain47",
+  "available": true
+ },
+ "capacity": "0_2044_1248_57_0_70_1988_963_0_0_4526_6982_465_0_623_995_0_0_0_0_0_0_53_0_0_0_0_"
+}

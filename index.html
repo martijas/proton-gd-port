@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Geometry Dash</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body {
+    margin: 0; height: 100%; background: #0a0d18; overflow: hidden;
+    /* The game reads taps directly; the browser must not also scroll or zoom. */
+    touch-action: none; overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none;
+  }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  /* An id selector out-specifies the browser's own [hidden] rule, so hiding it
+     has to be spelled out or the fallback shows over a game that started fine. */
+  #fallback[hidden] { display: none; }
+  #fallback {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    text-align: center; padding: 24px; box-sizing: border-box;
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: #e8ecff;
+  }
+  #fallback h1 { margin: 0 0 .5rem; font-size: clamp(1.6rem, 6vw, 2.4rem); }
+  #fallback p { margin: 0 0 1.25rem; color: #b6c0e6; }
+  #fallback a { color: #9fb4ff; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="fallback" hidden>
+  <main>
+    <h1>Geometry Dash</h1>
+    <p data-role="why">The game could not start. Try reloading.</p>
+    <p><a href="./debug.html?level=1">Open the physics view</a></p>
+  </main>
+</div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

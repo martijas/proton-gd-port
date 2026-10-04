@@ -1,0 +1,27 @@
+{
+ "id": 28220417,
+ "name": "Yatagarasu",
+ "description": "Update made by Mark Napkin and DragoonGD",
+ "author": "TrusTa",
+ "face": 10,
+ "stars": 10,
+ "demon": true,
+ "featured": true,
+ "epic": 0,
+ "downloads": 39061715,
+ "likes": 1157886,
+ "length": 4,
+ "coins": 0,
+ "verifiedCoins": false,
+ "twoPlayer": false,
+ "objects": 65535,
+ "version": 1,
+ "song": {
+  "kind": "custom",
+  "id": 490479,
+  "name": "Flawless Wings of Yatagarasu",
+  "artist": "Gls",
+  "available": true
+ },
+ "capacity": ""
+}

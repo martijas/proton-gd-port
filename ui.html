@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Geometry Dash — interface parts</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #10131f; overflow: hidden; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #msg {
+    position: absolute; left: 8px; bottom: 8px; z-index: 2;
+    font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; color: #cfd8ff;
+    background: rgba(8,10,20,.72); padding: 6px 8px; border-radius: 6px; white-space: pre;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="msg">starting…</div>
+<script type="module" src="/src/debug/ui.ts"></script>
+</body>
+</html>

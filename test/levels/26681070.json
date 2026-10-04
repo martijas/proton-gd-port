@@ -1,0 +1,27 @@
+{
+ "id": 26681070,
+ "name": "Sonic Wave",
+ "description": "Mythical Demon by Cyclic! Video on my YouTube.",
+ "author": "lSunix",
+ "face": 10,
+ "stars": 10,
+ "demon": true,
+ "featured": false,
+ "epic": 0,
+ "downloads": 49302149,
+ "likes": 1102220,
+ "length": 4,
+ "coins": 0,
+ "verifiedCoins": false,
+ "twoPlayer": false,
+ "objects": 23157,
+ "version": 14,
+ "song": {
+  "kind": "custom",
+  "id": 574484,
+  "name": "F-777 - Sonic Blaster",
+  "artist": "F-777",
+  "available": true
+ },
+ "capacity": "1,700,8,510,9,239,10,350"
+}

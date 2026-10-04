@@ -1,0 +1,232 @@
+{
+ "format": "pcgd-macro",
+ "version": 1,
+ "levelId": 5002,
+ "levelName": "The Sewers",
+ "framerate": 240,
+ "simHash": "551808bc",
+ "botInfo": {
+  "name": "pcgd-autoplayer",
+  "version": "1"
+ },
+ "inputs": [
+  {
+   "frame": 16,
+   "button": 2,
+   "player2": false,
+   "down": true
+  },
+  {
+   "frame": 48,
+   "button": 2,
+   "player2": false,
+   "down": false
+  },
+  {
+   "frame": 48,
+   "button": 3,
+   "player2": false,
+   "down": true
+  },
+  {
+   "frame": 112,
+   "button": 1,
+   "player2": false,
+   "down": true
+  },
+  {
+   "frame": 128,
+   "button": 1,
+   "player2": false,
+   "down": false
+  },
+  {
+   "frame": 240,
+   "button": 1,
+   "player2": false,
+   "down": true
+  },
+  {
+   "frame": 256,
+   "button": 1,
+   "player2": false,
+   "down": false
+  },
+  {
+   "frame": 288,
+   "button": 1,
+   "player2": false,
+   "down": true
+  },
+  {
+   "frame": 304,
+   "button": 3,
+   "player2": false,
+   "down": false
+  },
+  {
+   "frame": 320,
+   "button": 1,
+   "player2": false,
+   "down": false
+  },
+  {
+   "frame": 320,
+   "button": 3,
+   "player2": false,
+   "down": true
+  },
+  {
+   "frame": 352,
+   "button": 3,
+   "player2": false,
+   "down": false
+  },
+  {
+   "frame": 368,
+   "button": 3,
+   "player2": false,
+   "down": true
+  },
+  {
+   "frame": 400,
+   "button": 1,
+   "player2": false,
+   "down": true
+  },
+  {
+   "frame": 416,
+   "button": 1,
+   "player2": false,
+   "down": false
+  },
+  {
+   "frame": 560,
+   "button": 3,
+   "player2": false,
+   "down": false
+  },
+  {
+   "frame": 576,
+   "button": 3,
+   "player2": false,
+   "down": true
+  },
+  {
+   "frame": 592,
+   "button": 3,
+   "player2": false,
+   "down": false
+  },
+  {
+   "frame": 608,
+   "button": 3,
+   "player2": false,
+   "down": true
+  },
+  {
+   "frame": 624,
+   "button": 2,
+   "player2": false,
+   "down": true
+  },
+  {
+   "frame": 624,
+   "button": 3,
+   "player2": false,
+   "down": false
+  },
+  {
+   "frame": 640,
+   "button": 2,
+   "player2": false,
+   "down": false
+  },
+  {
+   "frame": 640,
+   "button": 3,
+   "player2": false,
+   "down": true
+  }
+ ],
+ "completedFrame": null,
+ "checkpoints": [
+  {
+   "frame": 0,
+   "x": 151,
+   "y": 415,
+   "yVel": 0,
+   "mode": "cube"
+  },
+  {
+   "frame": 60,
+   "x": 139.2193145751953,
+   "y": 326.06201171875,
+   "yVel": -12.96,
+   "mode": "cube"
+  },
+  {
+   "frame": 120,
+   "x": 213.54405212402344,
+   "y": 125.5059814453125,
+   "yVel": -15,
+   "mode": "cube"
+  },
+  {
+   "frame": 180,
+   "x": 291.43896484375,
+   "y": 171.35067749023438,
+   "yVel": -0.052,
+   "mode": "cube"
+  },
+  {
+   "frame": 240,
+   "x": 369.3338623046875,
+   "y": 105,
+   "yVel": 0,
+   "mode": "cube"
+  },
+  {
+   "frame": 300,
+   "x": 447.228759765625,
+   "y": 166.99200439453125,
+   "yVel": -1.78,
+   "mode": "cube"
+  },
+  {
+   "frame": 360,
+   "x": 509.328369140625,
+   "y": 231.02401733398438,
+   "yVel": -0.7,
+   "mode": "cube"
+  },
+  {
+   "frame": 420,
+   "x": 575.3237915039062,
+   "y": 235.10400390625,
+   "yVel": 6.86,
+   "mode": "cube"
+  },
+  {
+   "frame": 480,
+   "x": 653.2205200195312,
+   "y": 238.7760009765625,
+   "yVel": -6.1,
+   "mode": "cube"
+  },
+  {
+   "frame": 540,
+   "x": 731.1172485351562,
+   "y": 135,
+   "yVel": 0,
+   "mode": "cube"
+  },
+  {
+   "frame": 600,
+   "x": 793.2174072265625,
+   "y": 134.95140075683594,
+   "yVel": -0.216,
+   "mode": "cube"
+  }
+ ]
+}

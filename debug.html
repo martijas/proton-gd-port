@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Geometry Dash — physics debug</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #111; color: #ddd; font: 13px system-ui, sans-serif; overflow: hidden; }
+  #hud { position: fixed; top: 8px; left: 8px; background: rgba(0,0,0,.6); padding: 6px 10px; border-radius: 6px; white-space: pre; pointer-events: none; }
+  #bar { position: fixed; bottom: 8px; left: 8px; right: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  #bar select, #bar button, #bar input { font: inherit; }
+  canvas { position: fixed; inset: 0; display: block; width: 100vw; height: 100vh; }
+  #gl { z-index: 0; }
+  /* The hitbox overlay sits on the rendered level and takes the pointer, so it
+     covers the whole viewport; the controls have to be above both of them. */
+  #c { z-index: 1; }
+  #hud, #bar { z-index: 2; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="c"></canvas>
+<div id="hud"></div>
+<div id="bar">
+  <select id="level"></select>
+  <button id="restart">Restart</button>
+  <button id="pause">Pause</button>
+  <button id="step">Step 1 tick</button>
+  <button id="step4">Step 1 frame</button>
+  <label><input id="hitboxes" type="checkbox" checked> Hitboxes</label>
+  <label><input id="noclip" type="checkbox"> Noclip</label>
+  <label>Start % <input id="startpct" type="number" min="0" max="100" value="0" style="width:4em"></label>
+  <label>Speed <input id="speed" type="range" style="width:8em;vertical-align:middle"> <span id="speedval"></span></label>
+  <span id="msg"></span>
+</div>
+<script type="module" src="/src/debug/main.ts"></script>
+</body>
+</html>

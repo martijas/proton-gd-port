@@ -1,0 +1,27 @@
+{
+ "id": 4284013,
+ "name": "Nine Circles",
+ "description": "Easy",
+ "author": "Zobros",
+ "face": 6,
+ "stars": 10,
+ "demon": true,
+ "featured": true,
+ "epic": 0,
+ "downloads": 127377092,
+ "likes": 3980289,
+ "length": 3,
+ "coins": 3,
+ "verifiedCoins": true,
+ "twoPlayer": false,
+ "objects": 0,
+ "version": 5,
+ "song": {
+  "kind": "custom",
+  "id": 533927,
+  "name": "NK - Nine Circles",
+  "artist": "Rukkus",
+  "available": true
+ },
+ "capacity": "29_424_29_73_29_29_177_73_29_29_566_29_237_29_29_29"
+}

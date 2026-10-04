@@ -1,0 +1,27 @@
+{
+ "id": 3979721,
+ "name": "Cataclysm",
+ "description": "Now w/ coins and extra death ,this level was sponsored by riot (verified)",
+ "author": "Ggb0y",
+ "face": 10,
+ "stars": 10,
+ "demon": true,
+ "featured": true,
+ "epic": 0,
+ "downloads": 82595611,
+ "likes": 1661728,
+ "length": 3,
+ "coins": 3,
+ "verifiedCoins": true,
+ "twoPlayer": false,
+ "objects": 0,
+ "version": 2,
+ "song": {
+  "kind": "custom",
+  "id": 467339,
+  "name": "At the Speed of Light",
+  "artist": "Dimrain47",
+  "available": true
+ },
+ "capacity": "29_566_566_73_29_29_132_177_29_29_566_317_237_29_29_29"
+}

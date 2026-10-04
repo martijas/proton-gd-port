@@ -1,0 +1,27 @@
+{
+ "id": 10565740,
+ "name": "Bloodbath",
+ "description": "Whose blood will be spilt in the Bloodbath? Who will the victors be? How many will survive? Good luck...",
+ "author": "Riot",
+ "face": 10,
+ "stars": 10,
+ "demon": true,
+ "featured": true,
+ "epic": 0,
+ "downloads": 189644176,
+ "likes": 5630016,
+ "length": 3,
+ "coins": 0,
+ "verifiedCoins": false,
+ "twoPlayer": false,
+ "objects": 24746,
+ "version": 3,
+ "song": {
+  "kind": "custom",
+  "id": 467339,
+  "name": "At the Speed of Light",
+  "artist": "Dimrain47",
+  "available": true
+ },
+ "capacity": "0_685_56_57_0_0_116_308_0_0_279_284_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0_0"
+}

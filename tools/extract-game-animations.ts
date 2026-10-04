@@ -1,0 +1,137 @@
+// Reads GameManager::setupGameAnimations out of the 2.206 decompile into
+// src/assets/gameAnimations.ts: for every animated id, how many frames its
+// cycle has, how long a frame lasts, and the two frame families its main and
+// colour sprites play.
+//
+//   npx tsx tools/extract-game-animations.ts
+//
+// The function is one long run of the same three statements — two string
+// constructions and an addGameAnimation call, or once an
+// addCustomAnimationFrame — so it is parsed by pattern rather than
+// interpreted. IDA spells small integers as addresses (`&byte_8` is 8,
+// `&byte_9[3]` is 12, `(char *)&dword_0 + 1` is 1, `&word_10` is 16) and floats
+// as their bit pattern (1028443341 is 0.05f); both are decoded here, and any
+// argument in another form stops the tool rather than being guessed at.
+// [GameManager::setupGameAnimations, gd-ida-decomp.cpp:622973-624650;
+//  addGameAnimation :622835-622890; addCustomAnimationFrame :622917-622960]
+
+import { readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const DECOMP = join(HERE, "..", "data", "ref", "gd-ida-decomp.cpp");
+const OUT = join(HERE, "..", "src", "assets", "gameAnimations.ts");
+
+const lines = readFileSync(DECOMP, "utf8").split(/\r?\n/);
+const start = lines.findIndex((l) => l.startsWith("int *__fastcall GameManager::setupGameAnimations("));
+if (start < 0) throw new Error("GameManager::setupGameAnimations not found");
+let end = start + 1;
+while (end < lines.length && lines[end] !== "}") end++;
+const body = lines.slice(start, end + 1).join("\n");
+
+/** An integer argument as IDA prints it. */
+function int(text: string): number {
+  const s = text.replace(/\((?:cocos2d::CCInteger|cocos2d::CCDictionary) \*\*?\)/g, "").trim();
+  let m = /^-?\d+u?$/.exec(s);
+  if (m) return Number.parseInt(s, 10);
+  m = /^&?(byte|word|dword)_([0-9A-F]+)(?:\[(\d+)\])?$/.exec(s);
+  if (m) return Number.parseInt(m[2], 16) + (m[3] ? Number(m[3]) : 0);
+  m = /^\(\(char \*\)&(byte|word|dword)_([0-9A-F]+) \+ (\d+)\)$/.exec(s);
+  if (m) return Number.parseInt(m[2], 16) + Number(m[3]);
+  throw new Error(`cannot read the integer ${JSON.stringify(text)}`);
+}
+
+/** A float argument, passed as its IEEE bits. */
+function float(text: string): number {
+  const bits = Number.parseInt(text.trim(), 10);
+  if (!Number.isInteger(bits)) throw new Error(`cannot read the float ${JSON.stringify(text)}`);
+  const view = new DataView(new ArrayBuffer(4));
+  view.setUint32(0, bits >>> 0);
+  return Math.round(view.getFloat32(0) * 1e6) / 1e6;
+}
+
+/** `"name"`, or `&byte_912B18`, the empty string. */
+function str(text: string): string {
+  const t = text.trim();
+  if (t === "&byte_912B18") return "";
+  const m = /^"([^"]*)"$/.exec(t);
+  if (!m) throw new Error(`cannot read the string ${JSON.stringify(text)}`);
+  return m[1];
+}
+
+interface Entry {
+  id: number;
+  frames: number;
+  time: number;
+  name: string;
+  color: string;
+  custom: { at: number; main: string; color: string }[];
+}
+
+const entries = new Map<number, Entry>();
+const order: number[] = [];
+const call =
+  /sub_75309C\(&v13, ("[^"]*"|&byte_912B18), \(int\)v11\);\s*sub_75309C\(&v14, ("[^"]*"|&byte_912B18), \(int\)v12\);\s*GameManager::(addGameAnimation|addCustomAnimationFrame)\(([\s\S]*?)\);/g;
+let found = 0;
+for (let m = call.exec(body); m; m = call.exec(body)) {
+  found++;
+  const a = str(m[1]);
+  const b = str(m[2]);
+  const args = m[4].split(/,\s*(?![^()]*\))/).map((s) => s.trim());
+  if (m[3] === "addGameAnimation") {
+    // (this, id, frames, frameTime, &name, &colorName, defaultFrame)
+    if (args.length !== 7) throw new Error(`addGameAnimation with ${args.length} arguments`);
+    const id = int(args[1]);
+    if (entries.has(id)) throw new Error(`id ${id} is set twice`);
+    entries.set(id, { id, frames: int(args[2]), time: float(args[3]), name: a, color: b, custom: [] });
+    order.push(id);
+  } else {
+    // (this, id, frameNumber, &main, &colour)
+    const id = int(args[1]);
+    const entry = entries.get(id);
+    if (!entry) throw new Error(`a custom frame for ${id} before its animation`);
+    entry.custom.push({ at: int(args[2]), main: a, color: b });
+  }
+}
+const calls = (body.match(/GameManager::add(?:GameAnimation|CustomAnimationFrame)\(/g) ?? []).length;
+if (found !== calls) throw new Error(`parsed ${found} of ${calls} calls`);
+
+const rows = order.map((id) => {
+  const e = entries.get(id)!;
+  const fields = [`frames: ${e.frames}`, `time: ${e.time}`, `name: ${JSON.stringify(e.name)}`, `color: ${e.color ? JSON.stringify(e.color) : "null"}`];
+  if (e.custom.length > 0) {
+    fields.push(`custom: [${e.custom.map((c) => `{ at: ${c.at}, main: ${JSON.stringify(c.main)}, color: ${JSON.stringify(c.color)} }`).join(", ")}]`);
+  }
+  return `  [${id}, { ${fields.join(", ")} }],`;
+});
+
+writeFileSync(
+  OUT,
+  `// Generated by tools/extract-game-animations.ts from GameManager::setupGameAnimations
+// (gd-ida-decomp.cpp:622973-624650). Do not edit.
+
+/** One entry of the game's animation table. */
+export interface GameAnimation {
+  /** Frames in the cycle (+1196, framesForAnimation). */
+  frames: number;
+  /** Seconds a frame lasts before the object's own speed (frameTimeForAnimation). */
+  time: number;
+  /** The main sprite's frames are \`\${name}_001.png\` on. */
+  name: string;
+  /** The colour sprite's, when it has its own. */
+  color: string | null;
+  /** Frames spliced in by addCustomAnimationFrame: at 1-based \`at\`, or appended when the list is shorter. */
+  custom?: readonly { at: number; main: string; color: string }[];
+}
+
+/**
+ * The table, by object id. A negative id is the collected look of the coin
+ * with that id.
+ */
+export const GAME_ANIMATIONS: ReadonlyMap<number, GameAnimation> = new Map<number, GameAnimation>([
+${rows.join("\n")}
+]);
+`,
+);
+console.log(`wrote ${order.length} animations to ${OUT}`);

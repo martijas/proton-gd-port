@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Geometry Dash — play a macro</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #111; color: #ddd; font: 13px system-ui, sans-serif; overflow: hidden; }
+  canvas { position: fixed; inset: 0; display: block; width: 100vw; height: 100vh; }
+  #gl { z-index: 0; }
+  #c { z-index: 1; pointer-events: none; }
+  #hud { position: fixed; top: 8px; left: 8px; z-index: 2; background: rgba(0,0,0,.6); padding: 6px 10px; border-radius: 6px; white-space: pre; pointer-events: none; line-height: 1.45; }
+  #hud b { color: #fff; font-size: 15px; }
+  #keys { position: fixed; top: 8px; right: 8px; z-index: 2; background: rgba(0,0,0,.6); padding: 6px 10px; border-radius: 6px; white-space: pre; pointer-events: none; line-height: 1.45; color: #aaa; }
+
+  #bar { position: fixed; bottom: 8px; left: 8px; right: 8px; z-index: 2; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+         background: rgba(0,0,0,.6); padding: 6px 8px; border-radius: 6px; }
+  #bar button, #bar input, #bar select { font: inherit; }
+  #bar label { display: inline-flex; gap: 5px; align-items: center; }
+  #level { width: 7em; }
+  #from { width: 6em; }
+  #speed { width: 9em; }
+  #speedval { min-width: 3.2em; font-variant-numeric: tabular-nums; }
+  #msg { color: #aaa; }
+  #msg.good { color: #6d6; }
+  #msg.bad { color: #f77; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="c"></canvas>
+<div id="hud"></div>
+<div id="keys">Space, Up, W or click: jump
+Left / Right or A / D: move (platformer)
+C: checkpoint here    X: remove last checkpoint
+R: retry    Esc or P: pause</div>
+<div id="bar">
+  <label>Level <input id="level" type="number" min="1"></label>
+  <label>Start from <select id="source"></select></label>
+  <label>at tick <input id="from" type="number" min="0" value="0"></label>
+  <button id="load">Start</button>
+  <button id="pause">Pause</button>
+  <label>Speed <input id="speed" type="range"> <span id="speedval"></span></label>
+  <label><input id="hitboxes" type="checkbox"> Hitboxes</label>
+  <label><input id="sound" type="checkbox" checked> Sound</label>
+  <span id="msg"></span>
+</div>
+<script type="module" src="/src/debug/manualmacro.ts"></script>
+</body>
+</html>

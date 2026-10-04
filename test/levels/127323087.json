@@ -1,0 +1,27 @@
+{
+ "id": 127323087,
+ "name": "Society",
+ "description": "// Why are you always awake at night? //",
+ "author": "Neomarbilan",
+ "face": 10,
+ "stars": 10,
+ "demon": true,
+ "featured": true,
+ "epic": 0,
+ "downloads": 4313660,
+ "likes": 121903,
+ "length": 4,
+ "coins": 0,
+ "verifiedCoins": true,
+ "twoPlayer": false,
+ "objects": 65535,
+ "version": 17,
+ "song": {
+  "kind": "custom",
+  "id": 1569886,
+  "name": "Pathetic - Society (Remix)",
+  "artist": "HelliXScream",
+  "available": true
+ },
+ "capacity": ""
+}

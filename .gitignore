@@ -1,0 +1,9 @@
+node_modules/
+dist/
+resources/
+.env
+*.log
+# Scratch files the tests and solver drop.
+test/_*
+# The asset build's cache: absolute paths and timestamps from one machine.
+data/asset-build.json

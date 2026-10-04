@@ -1,0 +1,2126 @@
+{
+"10": {
+"plist": "portalEffect01.plist",
+"z": 4,
+"position": 2,
+"offset": [
+-5.0,
+0.0
+]
+},
+"11": {
+"plist": "portalEffect02.plist",
+"z": 4,
+"position": 2,
+"offset": [
+-5.0,
+0.0
+]
+},
+"12": {
+"plist": "portalEffect03.plist",
+"z": 4,
+"position": 2,
+"offset": [
+-5.0,
+0.0
+]
+},
+"13": {
+"plist": "portalEffect04.plist",
+"z": 4,
+"position": 2,
+"offset": [
+-5.0,
+0.0
+]
+},
+"35": {
+"plist": "bumpEffect.plist",
+"z": 0,
+"position": 2
+},
+"36": {
+"plist": "ringEffect.plist",
+"z": 4,
+"position": 2,
+"start": [
+1.0,
+0.784314,
+0.196078,
+1.0
+],
+"end": [
+1.0,
+0.392157,
+0.098039,
+1.0
+],
+"680": 1
+},
+"45": {
+"plist": "portalEffect02.plist",
+"z": 4,
+"position": 2,
+"offset": [
+-5.0,
+0.0
+],
+"start": [
+1.0,
+0.588235,
+0.0,
+1.0
+],
+"end": [
+1.0,
+0.588235,
+0.0,
+1.0
+]
+},
+"46": {
+"plist": "portalEffect01.plist",
+"z": 4,
+"position": 2,
+"offset": [
+-5.0,
+0.0
+]
+},
+"47": {
+"plist": "portalEffect02.plist",
+"z": 4,
+"position": 2,
+"offset": [
+-5.0,
+0.0
+],
+"start": [
+1.0,
+0.392157,
+0.0,
+1.0
+],
+"end": [
+1.0,
+0.392157,
+0.0,
+1.0
+]
+},
+"67": {
+"plist": "bumpEffect.plist",
+"z": 0,
+"position": 2,
+"start": [
+0.0,
+1.0,
+1.0,
+1.0
+],
+"end": [
+0.0,
+1.0,
+1.0,
+1.0
+]
+},
+"84": {
+"plist": "ringEffect.plist",
+"z": 4,
+"position": 2,
+"start": [
+0.0,
+1.0,
+1.0,
+1.0
+],
+"end": [
+0.0,
+0.490196,
+1.0,
+1.0
+],
+"680": 1
+},
+"99": {
+"plist": "portalEffect08.plist",
+"z": 4,
+"position": 2
+},
+"101": {
+"plist": "portalEffect09.plist",
+"z": 4,
+"position": 2
+},
+"111": {
+"plist": "portalEffect02.plist",
+"z": 4,
+"position": 2,
+"offset": [
+-5.0,
+0.0
+],
+"start": [
+1.0,
+0.784314,
+0.0,
+1.0
+],
+"end": [
+1.0,
+0.392157,
+0.0,
+1.0
+]
+},
+"140": {
+"plist": "bumpEffect.plist",
+"z": 0,
+"position": 2,
+"start": [
+1.0,
+0.0,
+1.0,
+1.0
+],
+"end": [
+1.0,
+0.0,
+1.0,
+1.0
+]
+},
+"141": {
+"plist": "ringEffect.plist",
+"z": 4,
+"position": 2,
+"start": [
+1.0,
+0.392157,
+1.0,
+1.0
+],
+"end": [
+1.0,
+0.0,
+0.686275,
+1.0
+],
+"680": 1
+},
+"200": {
+"plist": "boost_01_effect.plist",
+"z": -2,
+"position": 2
+},
+"201": {
+"plist": "boost_02_effect.plist",
+"z": -2,
+"position": 2
+},
+"202": {
+"plist": "boost_03_effect.plist",
+"z": -2,
+"position": 2
+},
+"203": {
+"plist": "boost_04_effect.plist",
+"z": -2,
+"position": 2
+},
+"286": {
+"plist": "portalEffect09.plist",
+"z": 4,
+"position": 2,
+"start": [
+1.0,
+0.784314,
+0.0,
+1.0
+],
+"end": [
+1.0,
+0.392157,
+0.0,
+1.0
+]
+},
+"287": {
+"plist": "portalEffect09.plist",
+"z": 4,
+"position": 2,
+"start": [
+0.0,
+0.784314,
+1.0,
+1.0
+],
+"end": [
+0.0,
+0.392157,
+1.0,
+1.0
+]
+},
+"660": {
+"plist": "portalEffect02.plist",
+"z": 4,
+"position": 2,
+"offset": [
+-5.0,
+0.0
+],
+"start": [
+0.0,
+0.784314,
+1.0,
+1.0
+],
+"end": [
+0.0,
+0.392157,
+1.0,
+1.0
+]
+},
+"745": {
+"plist": "portalEffect02.plist",
+"z": 4,
+"position": 2,
+"offset": [
+-5.0,
+0.0
+],
+"start": [
+0.588235,
+0.588235,
+0.588235,
+1.0
+],
+"end": [
+0.196078,
+0.196078,
+0.294118,
+1.0
+]
+},
+"747": {
+"plist": "portalEffect02.plist",
+"z": 4,
+"position": 2,
+"offset": [
+-5.0,
+0.0
+],
+"start": [
+0.0,
+1.0,
+1.0,
+1.0
+],
+"end": [
+0.0,
+0.392157,
+0.588235,
+1.0
+]
+},
+"749": {
+"plist": "portalEffect02.plist",
+"z": 4,
+"position": 2,
+"offset": [
+-5.0,
+0.0
+],
+"start": [
+1.0,
+0.784314,
+0.0,
+1.0
+],
+"end": [
+1.0,
+0.392157,
+0.0,
+1.0
+]
+},
+"1022": {
+"plist": "ringEffect.plist",
+"z": 4,
+"position": 2,
+"start": [
+0.294118,
+1.0,
+0.294118,
+1.0
+],
+"end": [
+0.0,
+1.0,
+0.0,
+1.0
+]
+},
+"1275": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"1330": {
+"plist": "ringEffect.plist",
+"z": 4,
+"position": 2,
+"start": [
+1.0,
+1.0,
+1.0,
+1.0
+],
+"end": [
+0.0,
+0.0,
+0.0,
+1.0
+]
+},
+"1331": {
+"plist": "portalEffect02.plist",
+"z": 4,
+"position": 2,
+"offset": [
+-5.0,
+0.0
+],
+"start": [
+0.784314,
+0.0,
+1.0,
+1.0
+],
+"end": [
+0.784314,
+0.0,
+1.0,
+1.0
+]
+},
+"1332": {
+"plist": "bumpEffect.plist",
+"z": 0,
+"position": 2,
+"start": [
+1.0,
+0.196078,
+0.196078,
+1.0
+],
+"end": [
+1.0,
+0.0,
+0.0,
+1.0
+]
+},
+"1333": {
+"plist": "ringEffect.plist",
+"z": 4,
+"position": 2,
+"start": [
+1.0,
+0.392157,
+0.098039,
+1.0
+],
+"end": [
+1.0,
+0.0,
+0.0,
+1.0
+],
+"680": 1
+},
+"1334": {
+"plist": "boost_04_effect.plist",
+"z": -2,
+"position": 2,
+"start": [
+1.0,
+0.0,
+0.0,
+0.0
+],
+"end": [
+1.0,
+0.0,
+0.0,
+0.0
+]
+},
+"1583": {
+"plist": "fireballEffect.plist",
+"z": -2,
+"position": 1,
+"offset": [
+0.0,
+0.0
+],
+"669": 1,
+"920": 1
+},
+"1586": {
+"plist": "fireballEffect.plist",
+"z": -2,
+"position": 1,
+"offset": [
+0.0,
+0.0
+],
+"680": 1,
+"669": 1,
+"920": 1
+},
+"1587": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"1589": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"1594": {
+"plist": "ringEffect.plist",
+"z": 4,
+"position": 2,
+"start": [
+1.0,
+0.784314,
+0.196078,
+1.0
+],
+"end": [
+1.0,
+0.392157,
+0.098039,
+1.0
+],
+"669": 1,
+"670": 1,
+"680": 1
+},
+"1598": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"1700": {
+"plist": "bubbleEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+0.0
+],
+"669": 1
+},
+"1704": {
+"plist": "ringEffect.plist",
+"z": 4,
+"position": 2,
+"start": [
+0.0,
+1.0,
+0.0,
+1.0
+],
+"end": [
+0.0,
+0.0,
+0.0,
+1.0
+],
+"680": 1
+},
+"1751": {
+"plist": "ringEffect.plist",
+"z": 4,
+"position": 2,
+"start": [
+1.0,
+0.0,
+0.0,
+1.0
+],
+"end": [
+0.0,
+0.0,
+0.0,
+1.0
+],
+"680": 1
+},
+"1933": {
+"plist": "portalEffect02.plist",
+"z": 4,
+"position": 2,
+"offset": [
+-5.0,
+0.0
+],
+"start": [
+1.0,
+1.0,
+0.0,
+1.0
+],
+"end": [
+1.0,
+0.784314,
+0.0,
+1.0
+]
+},
+"2064": {
+"plist": "portalEffect02.plist",
+"z": 4,
+"position": 2,
+"offset": [
+-5.0,
+0.0
+],
+"start": [
+1.0,
+0.784314,
+0.0,
+1.0
+],
+"end": [
+1.0,
+0.392157,
+0.0,
+1.0
+]
+},
+"2902": {
+"plist": "portalEffect02.plist",
+"z": 4,
+"position": 2,
+"offset": [
+-5.0,
+0.0
+],
+"start": [
+0.0,
+1.0,
+1.0,
+1.0
+],
+"end": [
+0.0,
+0.392157,
+0.588235,
+1.0
+]
+},
+"2926": {
+"plist": "portalEffect02.plist",
+"z": 4,
+"position": 2,
+"start": [
+0.0,
+1.0,
+0.0,
+1.0
+],
+"end": [
+0.0,
+1.0,
+0.0,
+1.0
+],
+"offset": [
+-5.0,
+0.0
+]
+},
+"3004": {
+"plist": "ringEffect.plist",
+"z": 4,
+"position": 2,
+"start": [
+1.0,
+0.0,
+1.0,
+1.0
+],
+"end": [
+0.392157,
+0.098039,
+1.0,
+1.0
+],
+"680": 1
+},
+"3005": {
+"plist": "bumpEffect.plist",
+"z": 0,
+"position": 2,
+"start": [
+1.0,
+0.0,
+1.0,
+1.0
+],
+"end": [
+0.392157,
+0.098039,
+1.0,
+1.0
+]
+},
+"3027": {
+"plist": "ringEffect.plist",
+"z": 4,
+"position": 2,
+"start": [
+1.0,
+0.588235,
+0.0,
+1.0
+],
+"end": [
+1.0,
+0.0,
+0.0,
+1.0
+],
+"669": 1,
+"670": 1,
+"680": 1
+},
+"3601": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4401": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4402": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4403": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4404": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4405": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4406": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4407": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4408": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4409": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4410": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4411": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4412": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4413": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4414": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4415": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4416": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4417": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4418": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4419": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4420": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4421": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4422": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4423": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4424": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4425": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4426": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4427": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4428": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4429": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4430": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4431": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4432": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4433": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4434": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4435": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4436": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4437": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4438": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4439": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4440": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4441": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4442": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4443": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4444": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4445": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4446": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4447": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4448": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4449": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4450": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4451": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4452": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4453": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4454": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4455": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4456": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4457": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4458": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4459": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4460": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4461": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4462": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4463": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4464": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4465": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4466": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4467": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4468": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4469": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4470": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4471": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4472": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4473": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4474": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4475": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4476": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4477": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4478": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4479": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4480": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4481": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4482": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4483": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4484": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4485": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4486": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4487": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4488": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4489": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4490": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4491": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4492": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4493": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4494": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4495": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4496": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4497": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4498": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4499": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4500": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4501": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4502": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4503": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4504": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4505": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4506": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4507": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4508": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4509": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4510": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4511": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4512": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4513": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4514": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4515": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4516": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4517": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4518": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4519": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4520": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4521": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4522": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4523": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4524": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4525": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4526": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4527": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4528": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4529": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4530": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4531": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4532": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4533": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4534": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4535": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4536": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4537": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4538": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+},
+"4539": {
+"plist": "keyEffect.plist",
+"z": 0,
+"position": 2,
+"offset": [
+0.0,
+-5.0
+],
+"669": 1
+}
+}

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Geometry Dash — asset viewer</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #101014; color: #e6e9f2; overflow: hidden; }
+  body { font: 13px/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace; display: flex; flex-direction: column; }
+  #bar {
+    display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center;
+    padding: .5rem .75rem; background: #17171d; border-bottom: 1px solid #2a2a35;
+  }
+  #tabs { display: flex; gap: .25rem; }
+  #tabs button {
+    background: #22222b; color: #b9c0d4; border: 1px solid #32323f; border-radius: .35rem;
+    padding: .3rem .7rem; font: inherit; cursor: pointer;
+  }
+  #tabs button[aria-selected="true"] { background: #3550c8; color: #fff; border-color: #4a63d8; }
+  .controls { display: flex; flex-wrap: wrap; gap: .5rem .9rem; align-items: center; }
+  .controls.hidden { display: none; }
+  label { display: inline-flex; gap: .3rem; align-items: center; color: #aab1c6; }
+  select, input[type="text"], input[type="number"] {
+    background: #1d1d25; color: #e6e9f2; border: 1px solid #33333f; border-radius: .3rem;
+    padding: .22rem .4rem; font: inherit;
+  }
+  input[type="text"] { width: 12rem; }
+  input[type="color"] { width: 2.2rem; height: 1.6rem; padding: 0; border: 1px solid #33333f; background: #1d1d25; }
+  #bar button:not(#tabs button) { background: #22222b; color: #cfd5e8; border: 1px solid #33333f; border-radius: .3rem; padding: .25rem .6rem; font: inherit; cursor: pointer; }
+  #stage { position: relative; flex: 1; min-height: 0; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #hud {
+    position: absolute; left: .6rem; top: .6rem; padding: .45rem .6rem; border-radius: .4rem;
+    background: rgba(8,8,12,.78); border: 1px solid #2a2a35; white-space: pre; pointer-events: none;
+    max-width: calc(100% - 1.2rem); overflow: hidden;
+  }
+  #msg { color: #ffb4b4; }
+  #panel {
+    position: absolute; inset: 0; overflow: auto; padding: 1.2rem 1.5rem 3rem;
+    background: #101014; font: 13px/1.6 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  #panel.hidden, #hud.hidden { display: none; }
+  #panel h2 { margin: 0 0 .2rem; font-size: 1.2rem; }
+  #panel h3 { margin: 1.6rem 0 .4rem; font-size: 1rem; color: #cdd4ea; }
+  #panel .muted { color: #8d95ad; }
+  #panel table { border-collapse: collapse; margin-top: .6rem; width: min(46rem, 100%); }
+  #panel th, #panel td { text-align: left; padding: .18rem .7rem .18rem 0; border-bottom: 1px solid #23232c; }
+  #panel td.n, #panel th.n { text-align: right; }
+  #panel td.bar { width: 40%; }
+  #panel td.bar span { display: block; height: .55rem; border-radius: .3rem; background: #3550c8; }
+  #panel ul { margin: .4rem 0; padding-left: 1.1rem; }
+  #panel .badge { display: inline-block; margin: .2rem .4rem .2rem 0; padding: .15rem .55rem; border-radius: .35rem; }
+  #panel .badge.ok { background: #14301c; color: #8ef0a8; border: 1px solid #1f5c33; }
+  #panel .badge.bad { background: #3a1416; color: #ff9d9d; border: 1px solid #7a2029; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <div id="tabs">
+    <button id="tab-atlas" aria-selected="true">Atlases</button>
+    <button id="tab-icons" aria-selected="false">Icons</button>
+    <button id="tab-objects" aria-selected="false">Objects</button>
+    <button id="tab-report" aria-selected="false">Report</button>
+  </div>
+  <div class="controls" id="ctl-atlas">
+    <label>sheet <select id="atlas-pick"></select></label>
+    <label>res
+      <select id="atlas-res">
+        <option value="uhd">uhd</option>
+        <option value="hd">hd</option>
+      </select>
+    </label>
+    <label>find <input type="text" id="atlas-filter" placeholder="frame name"></label>
+    <label><input type="checkbox" id="atlas-outlines" checked> outlines</label>
+    <label><input type="checkbox" id="atlas-source"> source boxes</label>
+    <label><input type="checkbox" id="atlas-rotated" checked> mark rotated</label>
+    <label><input type="checkbox" id="atlas-labels"> names</label>
+    <label><input type="checkbox" id="atlas-checker" checked> checkerboard</label>
+    <button id="atlas-fit">fit</button>
+  </div>
+  <div class="controls hidden" id="ctl-icons">
+    <label>mode <select id="icon-kind"></select></label>
+    <label>colour 1 <input type="color" id="icon-color1" value="#00ff77"></label>
+    <label>colour 2 <input type="color" id="icon-color2" value="#00bbff"></label>
+    <label><input type="checkbox" id="icon-glow"> glow</label>
+    <button id="icon-fit">fit</button>
+  </div>
+  <div class="controls hidden" id="ctl-objects">
+    <label>id <input type="number" id="object-id" value="1" min="0" step="1" style="width:5.5rem"></label>
+    <button id="object-prev">←</button>
+    <button id="object-next">→</button>
+    <label><input type="checkbox" id="object-census" checked> only ids the levels use</label>
+    <label><input type="checkbox" id="object-children" checked> children</label>
+    <label><input type="checkbox" id="object-glow"> glow</label>
+    <label><input type="checkbox" id="object-hitbox" checked> hitbox</label>
+    <label><input type="checkbox" id="object-grid" checked> grid</label>
+  </div>
+  <div class="controls hidden" id="ctl-report"></div>
+  <span id="msg"></span>
+</div>
+<div id="stage">
+  <canvas id="c"></canvas>
+  <div id="hud"></div>
+  <div id="panel" class="hidden"></div>
+</div>
+<script type="module" src="/src/debug/textures.ts"></script>
+</body>
+</html>

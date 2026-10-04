@@ -1,0 +1,23 @@
+{
+  "name": "geometrydash-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Ground-up browser port of Geometry Dash 2.2 for Proton Catalog",
+  "scripts": {
+    "dev": "vite --config vite.config.ts",
+    "build": "vite build --config vite.config.ts",
+    "assets": "node --import tsx tools/build-assets.ts",
+    "test": "node --import tsx --test test/*.test.ts",
+    "bot": "node --import tsx test/run-bot.ts",
+    "triggers": "node --import tsx tools/trigger-report.ts",
+    "start": "node server/serve.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.17",
+    "canvas": "3.2.3",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3",
+    "vite": "6.4.2"
+  }
+}
