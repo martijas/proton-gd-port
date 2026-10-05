@@ -6,8 +6,8 @@
 //
 // Deploy: Cloudflare dashboard > Workers & Pages > Create > Worker, paste this
 // file over the starter code, Deploy. Or `npx wrangler deploy` in this folder.
-// Then set .github/pages/host-config.json to
-//   { "server": { "mode": "hostApi", "hostApi": "https://<worker>.workers.dev" }, ... }
+// .github/pages/host-config.json points the Pages copy at it:
+//   https://round-sky-761e.superboom915.workers.dev
 //
 // The game posts to <hostApi>/<endpoint>.php and fetches songs from
 // <hostApi>/audio?url=<song address>.

@@ -1,4 +1,4 @@
 {
-  "server": { "mode": "direct", "hostApi": "" },
+  "server": { "mode": "hostApi", "hostApi": "https://round-sky-761e.superboom915.workers.dev" },
   "hostedBy": "github/martijas"
 }
