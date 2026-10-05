@@ -313,6 +313,21 @@ test("the pause menu stops the level's own clock; the end screen stops only the 
   assert.deepEqual([stack.ticks, stack.freezesLevel], [false, false]);
 });
 
+test("a key stops at the topmost opaque screen, so Space in a level never reaches the level select", () => {
+  // The level select plays its level on Space and stays on the stack under
+  // the level; Space falling through to it restarted the level mid-jump.
+  const stack = new ScreenStack();
+  const pressed: string[] = [];
+  stack.push({ name: "levelSelect", opaque: true, build: () => [], onKey: (code) => (pressed.push(`select:${code}`), true) });
+  stack.push({ name: "play", opaque: true, build: () => [], onKey: () => false });
+  assert.equal(stack.key("Space", true), false);
+  assert.equal(pressed.length, 0);
+  // An overlay above the level still sees keys, and the level under it too.
+  stack.push({ name: "pause", build: () => [], onKey: (code) => (pressed.push(`pause:${code}`), code === "Escape") });
+  stack.key("Escape", true);
+  assert.deepEqual(pressed, ["pause:Escape"]);
+});
+
 test("uncovering a screen lets it run again", () => {
   const stack = new ScreenStack();
   const menu = counting("menu", true);

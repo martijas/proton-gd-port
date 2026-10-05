@@ -174,8 +174,14 @@ export class ScreenStack {
     return this.top?.onTouch?.(x, y) ?? false;
   }
 
+  /**
+   * A key, offered from the top down to the topmost opaque screen and no
+   * further: the level select stays on the stack under a level, and Space
+   * falling through to it started the level over.
+   */
   key(code: string, down: boolean): boolean {
-    for (let i = this.screens.length - 1; i >= 0; i--) {
+    const from = this.visibleFrom();
+    for (let i = this.screens.length - 1; i >= from; i--) {
       if (this.screens[i].onKey?.(code, down)) return true;
     }
     return false;
