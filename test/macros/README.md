@@ -376,6 +376,17 @@ Nothing in `npm test` replays these.
   rect and the caps, all match the decomp, so the missing height is still
   open.
 
+- **149992717, GRIEF** (IcEDCave, extreme demon): in progress. A two-player
+  wave start, 189,416 objects, about 55,700 units long, with three dual
+  sections (from x 14093, 30165 and 36090). The search steps both players
+  with the same input, so a dual that needs them apart is out of its reach.
+  The first run (`--maxW=2048 --ticks=2e10 --ms=10800000`, 8 GB heap) took
+  18 minutes to its first dead end at tick 2804 (x 3210, 5.8 %): every wave
+  line meets slope #4889 (obj 326) at (3210-3240, 90-120), among blocks and
+  slopes moved by groups 81, 82 and 86. The sim runs at about 3,600 ticks/s
+  here; the search's width is what makes it about a level-second every six
+  minutes.
+
 ## Levels with no macro
 
 - **5001-5004, the tower floors.** The End trigger works — each floor ends

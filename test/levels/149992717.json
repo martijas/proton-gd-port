@@ -1,0 +1,27 @@
+{
+ "id": 149992717,
+ "name": "GRIEF",
+ "description": "The End.",
+ "author": "IcEDCave",
+ "face": 6,
+ "stars": 10,
+ "demon": true,
+ "featured": true,
+ "epic": 1,
+ "downloads": 117983,
+ "likes": 39634,
+ "length": 4,
+ "coins": 0,
+ "verifiedCoins": true,
+ "twoPlayer": true,
+ "objects": 65535,
+ "version": 1,
+ "song": {
+  "kind": "custom",
+  "id": 482872,
+  "name": "KzX - Stalemate",
+  "artist": "Kayoszx",
+  "available": true
+ },
+ "capacity": "0,1172,1,1356,2,490,4,870,5,1192,8,1063,9,300,10,374,16,412,21,1032,22,396,23,548,24,474,25,1126,26,4458,27,964,28,1020,36,326,38,957,40,1860,42,659,43,659"
+}

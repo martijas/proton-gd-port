@@ -20,12 +20,14 @@ export interface DemoLevel {
 export const DEMO_LEVELS: readonly DemoLevel[] = [
   { id: 10565740, name: "Bloodbath", author: "Riot", songId: 467339, song: "At the Speed of Light", artist: "Dimrain47", stars: 10 },
   { id: 127323087, name: "Society", author: "Neomarbilan", songId: 1569886, song: "Pathetic - Society (Remix)", artist: "HelliXScream", stars: 10 },
+  { id: 149992717, name: "GRIEF", author: "IcEDCave", songId: 482872, song: "KzX - Stalemate", artist: "Kayoszx", stars: 10 },
 ];
 
 /** Each level's data and its capacity string, loaded only when it is played. */
 const FILES: Record<number, () => Promise<[{ default: string }, { default: { capacity: string } }]>> = {
   10565740: () => Promise.all([import("../../test/levels/10565740.txt?raw"), import("../../test/levels/10565740.json")]),
   127323087: () => Promise.all([import("../../test/levels/127323087.txt?raw"), import("../../test/levels/127323087.json")]),
+  149992717: () => Promise.all([import("../../test/levels/149992717.txt?raw"), import("../../test/levels/149992717.json")]),
 };
 
 export function demoLevel(id: number): DemoLevel | undefined {

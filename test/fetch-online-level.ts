@@ -11,6 +11,15 @@ import { setHostConfig } from "../src/online/hostConfig";
 import { downloadLevel } from "../src/online/robtop";
 import { projectPath } from "./helpers";
 
+// The servers refuse a request that names its client, and Node names itself;
+// the game sends no user agent at all.
+const nodeFetch = globalThis.fetch;
+globalThis.fetch = (input, init) => {
+  const headers = new Headers(init?.headers);
+  headers.set("User-Agent", "");
+  return nodeFetch(input, { ...init, headers });
+};
+
 const id = Number(process.argv[2]);
 if (!Number.isInteger(id)) throw new Error("usage: fetch-online-level.ts <levelId>");
 const tunnel = process.env.GD_SERVER;
