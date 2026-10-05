@@ -626,6 +626,15 @@ export const DASH_SPIN_FULL_SPEED = 17.31;
 export const DASH_SPIN_MAX_FACTOR = 2;
 export const DASH_SPIN_SLOPE = 1.5;
 export const DASH_SPIN_BASE = 0.5;
+/**
+ * The icon's spin while a cube or a ball dashes: 288° every 0.3 s, clockwise
+ * (anticlockwise in rotated gameplay). A platformer dash scales it by 2 from
+ * a dash speed of 17.31 up, below that by 0.3 + 1.7 × speed / 17.31.
+ * [updateDashArt, gd-ida-decomp.cpp:145044-145072]
+ */
+export const DASH_ART_SPIN = Math.fround(288) / Math.fround(0.3);
+export const DASH_ART_SPIN_SLOPE = 1.7;
+export const DASH_ART_SPIN_BASE = 0.3;
 
 // --- gravity flips ------------------------------------------------------------
 

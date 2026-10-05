@@ -440,6 +440,7 @@ export class Scene {
     // without rebuilding it.
     await this.loadEntitiesFor(level, render);
     this.list = DrawList.build(level, render, atlas, this.colors, index?.movingGroups, this.entities, this.font);
+    this.player.setAtlas(atlas);
     // Custom Particles carry their own definition in the level string, so the
     // emitters come out of the level rather than out of the asset build.
     this.particles = new ParticleField(
@@ -1225,6 +1226,9 @@ export class Scene {
     const visual = this.live?.triggers.visual;
     if (visual?.hidePlayer || visual?.options.hidePlayer1) return 0;
     if (!this.particlesEnabled) return 0;
+    const colours = this.colors;
+    const strong = playerChannelColours(colours ? colours.iconColour(1) : DEFAULT_ICON_1, colours ? colours.iconColour(2) : DEFAULT_ICON_2);
+    this.playerParticles.tint(strong.p1, strong.p2);
     const state = this.interpolated(sim.state, alpha);
     return this.playerParticles.update(state, this.lastDelta, state.flipped);
   }

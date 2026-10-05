@@ -12,9 +12,11 @@ import { existsSync, readFileSync } from "node:fs";
 
 import { IconSet } from "../src/assets/icons";
 import type { IconFile } from "../src/assets/iconTypes";
-import { PlayerRenderer } from "../src/render/player";
+import { AtlasSet } from "../src/assets/atlas";
+import type { AtlasFile } from "../src/assets/atlasTypes";
+import { PlayerRenderer, dashFlameScale } from "../src/render/player";
 import { strongColor } from "../src/render/colors";
-import { INSTANCE_FLOATS } from "../src/engine/gl/spriteBatch";
+import { BLEND, INSTANCE_BYTES, INSTANCE_FLOATS } from "../src/engine/gl/spriteBatch";
 import type { GameMode } from "../src/level/types";
 import type { PlayerState } from "../src/physics/types";
 import { builtPath } from "./helpers";
@@ -50,6 +52,10 @@ function playerAt(mode: GameMode, extra: Partial<PlayerState> = {}): PlayerState
     holdTicks: -1,
     dashing: false,
     dashAngle: 0,
+    clock: 0,
+    dashClock: 0,
+    dashArtClock: 0,
+    dashSpinRate: 0,
     dead: false,
     finished: false,
     killedBy: null,
@@ -172,4 +178,72 @@ test("a ship carries a cube, and it sits above the hull", { skip: SKIP }, () => 
     if (y > highest) highest = y;
   }
   assert.ok(highest - lowest > 5, `the rider should sit clear of the hull, got ${highest - lowest}`);
+});
+
+const atlasPath = builtPath("assets/atlas/uhd.json");
+const ATLAS_SKIP = SKIP || (existsSync(atlasPath) ? false : "run `npm run build` first");
+
+function withAtlas(p: PlayerRenderer): AtlasSet {
+  const file = JSON.parse(readFileSync(atlasPath, "utf8")) as AtlasFile;
+  const atlas = new (AtlasSet as unknown as new (f: AtlasFile) => AtlasSet)(file);
+  p.setAtlas(atlas);
+  return atlas;
+}
+
+/** The angle an instance's x axis is turned to, in degrees clockwise. */
+function turnOf(data: Float32Array, i: number): number {
+  const f = i * INSTANCE_FLOATS;
+  return (((-Math.atan2(data[f + 1], data[f]) * 180) / Math.PI) % 360 + 360) % 360;
+}
+
+test("a dashing cube draws the flame behind it in colour 2 and spins its icon", { skip: ATLAS_SKIP }, () => {
+  // [PlayerObject::updateDashArt :144931-145072, updateDashAnimation
+  //  :142970-142991, updateGlowColor :146282-146286]
+  const p = renderer(loadIcons());
+  withPages(p, "cube");
+  const atlas = withAtlas(p);
+  const first = { r: 0, g: 255, b: 119 };
+  const second = { r: 0, g: 187, b: 255 };
+  const half = 120; // half a second of ticks
+  const n = p.build(
+    playerAt("cube", { dashing: true, clock: 1000 + half, dashClock: 1000, dashArtClock: 1000, dashSpinRate: 960 }),
+    first,
+    second,
+    0,
+  );
+  const bytes = new Uint8Array(p.data.buffer);
+  const glow = atlas.frame("playerDash2_001.png");
+  assert.ok(glow, "the flame's frames ship on the glow sheet");
+  const strong = strongColor(second);
+  assert.deepEqual([bytes[40], bytes[41], bytes[42]], [strong.r, strong.g, strong.b], "the flame wears the strengthened colour 2");
+  assert.equal(bytes[44], glow.atlasIndex, "drawn from the level's sheet");
+  assert.equal(bytes[46], BLEND.ADD_SPRITE, "and drawn additively");
+  assert.equal(bytes[INSTANCE_BYTES + 43], 150, "its outline over it at 150");
+  assert.ok(n > 2, "then the icon");
+  // Half a second at 288° per 0.3 s is 480°, which is 120° round.
+  assert.ok(Math.abs(turnOf(p.data, 2) - 120) < 0.01, `the icon is turned ${turnOf(p.data, 2)}`);
+
+  p.build(playerAt("cube"), first, second, 0);
+  const still = Math.hypot(p.data[0], p.data[1]);
+  p.build(playerAt("cube", { dashing: true, dashSpinRate: 960 }), first, second, 0);
+  const dashing = Math.hypot(p.data[2 * INSTANCE_FLOATS], p.data[2 * INSTANCE_FLOATS + 1]);
+  assert.ok(Math.abs(dashing / still - 0.9) < 1e-6, `the icon is ${dashing / still} of its size while dashing`);
+});
+
+test("a dashing ship keeps its icon still, and the flame pops in", { skip: ATLAS_SKIP }, () => {
+  const p = renderer(loadIcons());
+  withPages(p, "ship");
+  withAtlas(p);
+  const colour = { r: 255, g: 255, b: 255 };
+  const plain = p.build(playerAt("ship"), colour, colour, 0);
+  const dashing = p.build(playerAt("ship", { dashing: true, rotation: 30 }), colour, colour, 0);
+  assert.equal(dashing, plain + 2, "the flame and its outline, and nothing else changes");
+  assert.ok(Math.abs(turnOf(p.data, 2) - 30) < 0.01, "the hull is turned along the dash, not spun");
+
+  // [PlayerObject::startDashing :148699-148708]
+  assert.deepEqual(dashFlameScale(0, 0.9, 0.9), { sx: 0.3, sy: 0.2 });
+  const settled = dashFlameScale(0.5, 0.9, 0.9);
+  assert.ok(Math.abs(settled.sx - 0.99) < 1e-9 && Math.abs(settled.sy - 1.08) < 1e-9, JSON.stringify(settled));
+  const peak = dashFlameScale(0.1, 0.9, 0.9);
+  assert.ok(Math.abs(peak.sx - 0.891) < 1e-9 && Math.abs(peak.sy - 1.296) < 1e-9, JSON.stringify(peak));
 });

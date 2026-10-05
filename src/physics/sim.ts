@@ -3597,6 +3597,7 @@ export class SimImpl implements Sim, PlayerWorld {
    */
   private startDash(p: Player, i: number): void {
     p.dashing = true;
+    p.dashClock = p.clock;
     p.lastLandTick = -1e9;
     p.stopRotation();
     p.dashOrbIdx = i;

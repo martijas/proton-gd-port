@@ -18,8 +18,9 @@ import { animFrame, partOf, type AnimEntity, type AnimSet } from "../assets/anim
 import type { IconSet } from "../assets/icons";
 import type { IconDef, IconKind, IconLayer } from "../assets/iconTypes";
 import { ICON_LAYER_ORDER } from "../assets/iconTypes";
+import type { AtlasSet } from "../assets/atlas";
 import type { GameMode } from "../level/types";
-import type { PlayerState } from "../physics/types";
+import { TICK_RATE, type PlayerState } from "../physics/types";
 import { frameQuad } from "./frameQuad";
 import { playerChannelColours, type Rgb } from "./colors";
 
@@ -96,9 +97,66 @@ export const DEFAULT_ICONS: IconChoice = {
  */
 const DARK_SUM = 100;
 
+/**
+ * The dash's flame, by mode: where updateDashArt puts it in the player and
+ * the scale it leaves it at. The cube, ship and UFO set one scale whose y
+ * half the decompile does not print; it is taken as the x.
+ * [gdp PlayerObject::updateDashArt :144989-145041]
+ */
+function dashFlameArt(mode: GameMode): { x: number; y: number; sx: number; sy: number } {
+  switch (mode) {
+    case "ship":
+      return { x: 0, y: -2, sx: 1, sy: 1 };
+    case "ufo":
+      return { x: 0, y: 0, sx: 0.95, sy: 0.95 };
+    case "robot":
+      return { x: 1, y: 0, sx: 0.9, sy: 0.85 };
+    case "spider":
+      return { x: 1, y: 0, sx: 0.95, sy: 0.8 };
+    default:
+      return { x: 0, y: 0, sx: 0.9, sy: 0.9 };
+  }
+}
+
+/**
+ * The flame's twelve frames, each 0.04 / 0.9 s on the player's clock — the
+ * 0.9 is +2020, which nothing changes after init, and the flame is never
+ * turned, so the angle term updateDashAnimation also has stays at one.
+ * [gdp PlayerObject::updateDashAnimation :142970-142991; init :162194]
+ */
+const DASH_FLAME_FRAMES = 12;
+const DASH_FLAME_FRAME_SECONDS = 0.04 / Math.fround(0.9);
+/** The flame's outline sits over it at opacity 150. [gdp PlayerObject::init :162541-162549] */
+const DASH_OUTLINE_ALPHA = 150 / 255;
+/** A cube's or ball's icon is drawn at 0.9 while it dashes. [gdp updateDashArt :145047-145048] */
+const DASH_ICON_SCALE = 0.9;
+
+/**
+ * startDashing's pop: from 0.3 by 0.2 the flame eases in and out (rate 2) to
+ * 0.9 by 1.2 of where it is going in 0.1 s, then to it in 0.1 s more — and
+ * where it is going is updateDashArt's scale times 1.1 by 1.2.
+ * [gdp PlayerObject::startDashing :148699-148708]
+ */
+export function dashFlameScale(seconds: number, sx: number, sy: number): { sx: number; sy: number } {
+  const tx = sx * 1.1;
+  const ty = sy * 1.2;
+  const ease = (t: number): number => (t < 0.5 ? 2 * t * t : 1 - 2 * (1 - t) * (1 - t));
+  if (seconds < 0.1) {
+    const e = ease(Math.max(0, seconds) / 0.1);
+    return { sx: 0.3 + (tx * 0.9 - 0.3) * e, sy: 0.2 + (ty * 1.2 - 0.2) * e };
+  }
+  if (seconds < 0.2) {
+    const e = ease((seconds - 0.1) / 0.1);
+    return { sx: tx * 0.9 + (tx - tx * 0.9) * e, sy: ty * 1.2 + (ty - ty * 1.2) * e };
+  }
+  return { sx: tx, sy: ty };
+}
+
 export class PlayerRenderer {
   private icons: IconSet | null = null;
   private anims: AnimSet | null = null;
+  /** The level's sheets, which hold the dash's flame. */
+  private atlas: AtlasSet | null = null;
   private readonly entities = new Map<string, AnimEntity>();
   /** Icon page index to the texture unit it is bound to. */
   private units = new Map<number, number>();
@@ -158,6 +216,11 @@ export class PlayerRenderer {
     this.units = units;
   }
 
+  /** The level's sheets, bound each on the unit of its own index. */
+  setAtlas(atlas: AtlasSet): void {
+    this.atlas = atlas;
+  }
+
   /**
    * Builds the player's sprites. `seconds` drives the skeletal animations and
    * comes from the simulation's tick, so a replay animates identically.
@@ -187,7 +250,13 @@ export class PlayerRenderer {
 
     const vehicle = VEHICLES[state.mode];
     const skeletal = SKELETAL[state.mode];
-    if (vehicle) {
+    if (state.dashing) this.drawDashFlame(state, body);
+    if (state.dashing && state.dashSpinRate !== 0 && !vehicle && !skeletal) {
+      // The icon spins inside the player, which stays turned along the dash.
+      const spin = (state.dashSpinRate * (state.clock - state.dashArtClock)) / TICK_RATE;
+      const kind = SIMPLE_KIND[state.mode] ?? "cube";
+      this.drawIcon(kind, this.choice[kind], compose(body, affine(0, 0, spin, DASH_ICON_SCALE, DASH_ICON_SCALE)), p1, p2, glow);
+    } else if (vehicle) {
       this.drawIcon(vehicle.kind, this.choice[vehicle.kind], compose(body, affine(0, vehicle.y, 0, 1, 1)), p1, p2, glow);
       if (vehicle.rider) {
         const r = vehicle.rider;
@@ -200,6 +269,41 @@ export class PlayerRenderer {
       this.drawIcon(kind, this.choice[kind], body, p1, p2, glow);
     }
     return this.at;
+  }
+
+  /**
+   * The dash's flame (+1372) behind the icon: its frame on the player's
+   * clock, drawn additively in the strengthened colour 2 — colour 1 with
+   * option 0061, which the port does not offer — with its white outline over
+   * it. It pops in when the dash starts; a later updateDashArt (a new mode, a
+   * turn of gameplay) stops the pop and leaves it at that mode's own scale.
+   * [gdp PlayerObject::startDashing :148591, :148698-148708;
+   *  updateGlowColor :146282-146286; init :162528-162549 (blend 770 / 1, as
+   *  stopDashing's copy of it :149828)]
+   */
+  private drawDashFlame(state: PlayerState, body: Affine): void {
+    const atlas = this.atlas;
+    if (!atlas) return;
+    const art = dashFlameArt(state.mode);
+    const scale = state.dashArtClock === state.dashClock
+      ? dashFlameScale((state.clock - state.dashClock) / TICK_RATE, art.sx, art.sy)
+      : { sx: art.sx, sy: art.sy };
+    const matrix = compose(body, affine(art.x, art.y, 0, scale.sx, scale.sy));
+    const n = (Math.floor(state.clock / TICK_RATE / DASH_FLAME_FRAME_SECONDS) % DASH_FLAME_FRAMES) + 1;
+    const number = String(n).padStart(3, "0");
+    const white = { r: 255, g: 255, b: 255 };
+    if (this.writeSheetFrame(`playerDash2_${number}.png`, matrix, this.glowTint, 1, BLEND.ADD_SPRITE)) this.at++;
+    if (this.writeSheetFrame(`playerDash2_outline_${number}.png`, matrix, white, DASH_OUTLINE_ALPHA, BLEND.NORMAL)) this.at++;
+  }
+
+  /** `writeFrame` for a frame of the level's sheets rather than of an icon page. */
+  private writeSheetFrame(frame: string, matrix: Affine, tint: Rgb, alpha: number, blend: number): boolean {
+    const atlas = this.atlas;
+    if (!atlas || this.at >= MAX_SPRITES) return false;
+    const found = atlas.frame(frame);
+    if (!found) return false;
+    const quad = frameQuad(found.atlas, found.frame, atlas.pxPerUnit);
+    return this.writeQuad(this.data, this.bytes, this.at, quad, found.atlasIndex, matrix, tint, alpha, blend);
   }
 
   private drawIcon(kind: IconKind, id: number, matrix: Affine, p1: Rgb, p2: Rgb, glow: boolean): void {
@@ -291,7 +395,20 @@ export class PlayerRenderer {
     if (!found) return false;
     const unit = this.units.get(found.page);
     if (unit === undefined) return false;
-    const quad = frameQuad(found.atlas, found.frame, icons.pxPerUnit);
+    return this.writeQuad(data, bytes, at, frameQuad(found.atlas, found.frame, icons.pxPerUnit), unit, matrix, tint, alpha, blend);
+  }
+
+  private writeQuad(
+    data: Float32Array,
+    bytes: Uint8Array,
+    at: number,
+    quad: ReturnType<typeof frameQuad>,
+    unit: number,
+    matrix: Affine,
+    tint: Rgb,
+    alpha: number,
+    blend: number,
+  ): boolean {
     const centre = apply(matrix, quad.cx, quad.cy);
     const f = at * INSTANCE_FLOATS;
     data[f] = matrix.a * quad.hw;

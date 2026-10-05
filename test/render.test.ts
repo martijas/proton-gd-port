@@ -953,6 +953,19 @@ test("a dash sprays, and the dust stops while it does", { skip: NO_PARTICLES }, 
   assert.notEqual(dashing.instances, plain.instances, "a dash does not look like a run");
 });
 
+test("the dust and the puff start in colour 1, the dash spray runs from colour 2 to half of it", { skip: NO_PARTICLES }, () => {
+  // [PlayerObject::updateGlowColor :146162-146212]
+  const p = new PlayerParticles();
+  p.load(particleFile(), SQUARE);
+  p.tint({ r: 255, g: 0, b: 51 }, { r: 0, g: 102, b: 255 });
+  const defs = (p as unknown as { slots: Array<{ emitter: { def: { startColor: number[]; endColor: number[] } } }> }).slots.map((s) => s.emitter.def);
+  const [drag, land, , dash] = defs;
+  assert.deepEqual(drag.startColor, [1, 0, 0.2, 1]);
+  assert.deepEqual(land.startColor, [1, 0, 0.2, 1]);
+  assert.deepEqual(dash.startColor, [0, 0.4, 1, 1]);
+  assert.deepEqual(dash.endColor, [0, 0.4, 1, 0.5]);
+});
+
 test("landing lets off a puff", { skip: NO_PARTICLES }, () => {
   const p = new PlayerParticles();
   p.load(particleFile(), SQUARE);

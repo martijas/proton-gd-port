@@ -164,6 +164,14 @@ export interface PlayerState {
    * Meaningful while dashing.
    */
   dashAngle: number;
+  /** The player's own clock (+2144), in ticks; a slowed-down level runs it slower. */
+  clock: number;
+  /** When the dash started, on that clock. */
+  dashClock: number;
+  /** When updateDashArt last restarted the icon's spin, on that clock. */
+  dashArtClock: number;
+  /** The icon's spin while dashing, in degrees a second clockwise; 0 for a mode that does not spin. */
+  dashSpinRate: number;
   dead: boolean;
   finished: boolean;
   /** Object index that killed the player, for hitbox debugging. */

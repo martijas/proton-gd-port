@@ -19,6 +19,7 @@ import type { PlayerState } from "../physics/types";
 import { INSTANCE_FLOATS } from "../engine/gl/spriteBatch";
 import { ParticleEmitter, type BakedQuad, type ParticleDef } from "./particles";
 import type { EffectQuad } from "./effects";
+import type { Rgb } from "./colors";
 
 /** The four the player itself uses, by their name in `particles.json`. */
 export const PLAYER_EFFECTS = {
@@ -202,6 +203,10 @@ interface Slot {
 export class PlayerParticles {
   private slots: Slot[] = [];
   private land: Slot | null = null;
+  private drag: Slot | null = null;
+  private dash: Slot | null = null;
+  /** The pair the effects were last tinted with. */
+  private tinted: { p1: Rgb; p2: Rgb } | null = null;
   private wasOnGround = false;
   private wasFlipped = false;
   private landFor = 0;
@@ -233,17 +238,22 @@ export class PlayerParticles {
     const behindBody = at(() => 0, true);
 
     const land = wrap(make(PLAYER_EFFECTS.land, 2), (_s, landing) => landing, feet, true);
+    const drag = wrap(make(PLAYER_EFFECTS.drag, 1), (s) => grounded(s.mode) && s.onGround && !s.dashing, justBehindAndAboveFeet, false);
+    const dash = wrap(make(PLAYER_EFFECTS.dash, 4), (s) => s.dashing, body, false);
     const built: Array<Slot | null> = [
-      wrap(make(PLAYER_EFFECTS.drag, 1), (s) => grounded(s.mode) && s.onGround && !s.dashing, justBehindAndAboveFeet, false),
+      drag,
       // A landing puff is the puff of hitting the ground, so it comes off the
       // part that hit it.
       land,
       // Exhaust comes out of the back of the ship for the same reason.
       wrap(make(PLAYER_EFFECTS.shipDrag, 3), (s) => EXHAUST_MODES.has(s.mode) && !s.onGround, behindBody, true),
-      wrap(make(PLAYER_EFFECTS.dash, 4), (s) => s.dashing, body, false),
+      dash,
     ];
     this.slots = built.filter((s): s is Slot => s !== null);
     this.land = land;
+    this.drag = drag;
+    this.dash = dash;
+    this.tinted = null;
     this.quad = { u0: quad.u0, v0: quad.v0, du: quad.du, dv: quad.dv, sheet: quad.unit, rotated: 0 };
     const cap = this.slots.reduce((n, s) => n + s.emitter.capacity, 0);
     this.data = new Float32Array(Math.max(1, cap) * INSTANCE_FLOATS);
@@ -252,6 +262,26 @@ export class PlayerParticles {
 
   get ready(): boolean {
     return this.quad !== null;
+  }
+
+  /**
+   * Tints the effects with the player's strengthened colours, as the game
+   * does whenever they change: the dust and the landing puff start in colour
+   * 1, and the dash spray runs from colour 2 to colour 2 at half alpha
+   * (colour 1 with option 0062, which the port does not offer). The exhaust
+   * keeps the plist's own.
+   * [gdp PlayerObject::updateGlowColor :146162-146212]
+   */
+  tint(p1: Rgb, p2: Rgb): void {
+    const was = this.tinted;
+    if (was && sameRgb(was.p1, p1) && sameRgb(was.p2, p2)) return;
+    this.tinted = { p1: { ...p1 }, p2: { ...p2 } };
+    const start = (c: Rgb, alpha: number): [number, number, number, number] => [c.r / 255, c.g / 255, c.b / 255, alpha];
+    for (const slot of [this.drag, this.land]) if (slot) slot.emitter.def.startColor = start(p1, 1);
+    if (this.dash) {
+      this.dash.emitter.def.startColor = start(p2, 1);
+      this.dash.emitter.def.endColor = start(p2, 0.5);
+    }
   }
 
   reset(): void {
@@ -339,6 +369,10 @@ export class PlayerParticles {
   get underCount(): number {
     return this.under;
   }
+}
+
+function sameRgb(a: Rgb, b: Rgb): boolean {
+  return a.r === b.r && a.g === b.g && a.b === b.b;
 }
 
 /** True for the modes that run along a surface rather than fly. */

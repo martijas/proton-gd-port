@@ -30,6 +30,9 @@ import {
   CUBE_SPIN_SECONDS_MINI,
   DASH_DEG,
   DASH_SPIN_BASE,
+  DASH_ART_SPIN,
+  DASH_ART_SPIN_BASE,
+  DASH_ART_SPIN_SLOPE,
   DASH_SPIN_FULL_SPEED,
   DASH_SPIN_MAX_FACTOR,
   DASH_SPIN_SLOPE,
@@ -530,6 +533,12 @@ export class Player implements PlayerState {
   dashMaxDuration = 0;
   /** +1208, when a platformer dash started, as a tick. */
   dashStartTick = 0;
+  /** When the dash started, as a tick. */
+  dashClock = 0;
+  /** When updateDashArt last restarted the icon's spin, as a tick. */
+  dashArtClock = 0;
+  /** The icon's spin while dashing, in degrees a second, clockwise; 0 for a mode that does not spin. */
+  dashSpinRate = 0;
 
   // --- spider ------------------------------------------------------------------
   lastSpiderFlipTick = -1e9;
@@ -933,6 +942,8 @@ export class Player implements PlayerState {
     if (mode !== left) {
       this.stopRotation();
       if (mode === "cube" && FLY_TOGGLE_MODES.has(left)) this.runRotateAction();
+      // modeDidChange, which every toggle that fires ends with. [:145569-145572]
+      if (this.dashing) this.updateDashArt();
     }
   }
 
@@ -2139,15 +2150,17 @@ export class Player implements PlayerState {
    * normal rate for a still dash to twice it from speed 3 (17.31) up.
    * A ball rolls again straight away; the dash's start stopped it.
    *
-   * Not simulated: a cube or ball takes its icon's angle here, which the
-   * dash spun on the frame clock (:149883-149887); this one keeps the dash's.
-   * [gdp PlayerObject::stopDashing, gd-ida-decomp.cpp:149796-149812, the spin
-   *  :149883-149898, the ball :149901-149902; updatePlayerForce
+   * Before any of that, a cube or ball takes its icon's angle: the dash's
+   * spin, which the game runs on the frame clock and this port on the tick's.
+   * [gdp PlayerObject::stopDashing, gd-ida-decomp.cpp:149796-149812, the
+   *  icon's angle :149877-149887, the spin :149888-149898, the ball
+   *  :149901-149902; updatePlayerForce
    *  :147375-147395; handlePlayerCommand(543) :142373-142379; update
    *  :161035-161038]
    */
   stopDashing(): void {
     if (!this.dashing) return;
+    if (this.dashSpinRate !== 0) this.rotation = this.dashIconAngle();
     this.dashing = false;
     this.lastLandTick = -1e9; // +2048 = 0
     const platformer = this.world.platformer;
@@ -2188,6 +2201,32 @@ export class Player implements PlayerState {
     const outside = a <= 90 || a >= 270;
     if (this.rotated === outside) a += 180;
     this.rotation = Math.fround(a);
+    this.dashArtClock = this.clock;
+    this.dashSpinRate = this.isFlying || this.isRobot || this.isSpider ? 0 : this.dashSpinFor();
+  }
+
+  /**
+   * The rest of updateDashArt: a cube or a ball spins its icon from upright,
+   * at DASH_ART_SPIN, the other way in rotated gameplay, and in a platformer
+   * faster the faster the dash. [gdp PlayerObject::updateDashArt,
+   * gd-ida-decomp.cpp:145044-145072]
+   */
+  private dashSpinFor(): number {
+    const rate = this.rotated ? -DASH_ART_SPIN : DASH_ART_SPIN;
+    if (!this.world.platformer) return rate;
+    const vx = Math.fround(this.dashVelX);
+    const vy = Math.fround(this.dashVelY);
+    const speed = Math.fround(Math.sqrt(Math.fround(Math.fround(vx * vx) + Math.fround(vy * vy))));
+    const factor =
+      speed > DASH_SPIN_FULL_SPEED
+        ? DASH_SPIN_MAX_FACTOR
+        : Math.fround(Math.fround(Math.fround(speed / DASH_SPIN_FULL_SPEED) * DASH_ART_SPIN_SLOPE) + DASH_ART_SPIN_BASE);
+    return rate * factor;
+  }
+
+  /** The icon's own angle inside the player while dashing, in degrees clockwise. */
+  dashIconAngle(): number {
+    return Math.fround((this.dashSpinRate * (this.clock - this.dashArtClock)) / TICKS_PER_SECOND);
   }
 
   // ---------------------------------------------------------------------------
@@ -2381,6 +2420,9 @@ export class Player implements PlayerState {
     this.dashAllowCollide = o.dashAllowCollide;
     this.dashMaxDuration = o.dashMaxDuration;
     this.dashStartTick = o.dashStartTick;
+    this.dashClock = o.dashClock;
+    this.dashArtClock = o.dashArtClock;
+    this.dashSpinRate = o.dashSpinRate;
     this.lastSpiderFlipTick = o.lastSpiderFlipTick;
     this.snapObj = o.snapObj;
     this.snapDistance = o.snapDistance;
