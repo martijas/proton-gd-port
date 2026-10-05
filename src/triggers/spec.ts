@@ -15,6 +15,7 @@
 
 import type { Level, LevelObject } from "../level/types";
 import { GAME_GROUND_Y } from "../physics/constants";
+import { KEYFRAME_OBJECT_ID, KEYFRAME_TRIGGER_ID, keyframeAnimId, keyframeOrder } from "./keyframes";
 
 // --- shared keys -------------------------------------------------------------
 
@@ -210,6 +211,12 @@ export interface TriggerIndex {
   /** The highest group id the level mentions, for sizing the state arrays. */
   readonly groupCount: number;
   readonly count: number;
+  /**
+   * Each keyframe animation's Keyframe objects (3032), by animation id (key
+   * 373), in order (key 374, then file order). [gdp GJBaseGameLayer::
+   *  addKeyframe :428896-428916, updateKeyframeOrder :428839-428879]
+   */
+  readonly keyframeAnims: ReadonlyMap<number, readonly number[]>;
 }
 
 /**
@@ -341,6 +348,29 @@ export function buildTriggerIndex(level: Level, isTrigger: (id: number) => boole
   touch.sort((a, b) => a.x - b.x || a.index - b.index);
   sortSpawnGroups(level, groups);
 
+  // A Keyframe Animation trigger moves its own key 51 or, without one, the
+  // key 51 of the keyframes it plays.
+  const keyframeAnims = new Map<number, number[]>();
+  for (const o of level.objects) {
+    if (o.id !== KEYFRAME_OBJECT_ID) continue;
+    const anim = keyframeAnimId(o);
+    let list = keyframeAnims.get(anim);
+    if (!list) keyframeAnims.set(anim, (list = []));
+    list.push(o.index);
+  }
+  for (const list of keyframeAnims.values()) {
+    list.sort((a, b) => keyframeOrder(level.objects[a]) - keyframeOrder(level.objects[b]) || a - b);
+  }
+  for (const spec of byObject.values()) {
+    if (spec.id !== KEYFRAME_TRIGGER_ID || spec.target > 0) continue;
+    for (const i of groups.get(int(spec, 76)) ?? []) {
+      const o = level.objects[i];
+      if (o.id !== KEYFRAME_OBJECT_ID) continue;
+      const g = Math.trunc(Number(o.props[K_TARGET] ?? 0));
+      if (g > 0) movingGroups.add(g);
+    }
+  }
+
   // A spawn with remaps (key 442, pairs "from.to") sends a Move aimed at
   // `from` to `to` instead, so `to` moves too; chains are followed.
   const remaps: [number, number][] = [];
@@ -387,6 +417,7 @@ export function buildTriggerIndex(level: Level, isTrigger: (id: number) => boole
     movingObjects: Int32Array.from(moving),
     groupCount,
     count: byObject.size,
+    keyframeAnims,
   };
 }
 

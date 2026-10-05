@@ -1609,8 +1609,14 @@ export class SimImpl implements Sim, PlayerWorld {
   private processButtons(p: Player, input: PlayerInput, raise: boolean): void {
     const player = p === this.p1 ? 1 : 2;
     if (raise && this.platformer) {
-      if (input.left !== p.leftHeld) this.triggers.gameEvent(input.left ? EVENT_LEFT_PUSH : EVENT_LEFT_RELEASE, 0, player);
-      if (input.right !== p.rightHeld) this.triggers.gameEvent(input.right ? EVENT_RIGHT_PUSH : EVENT_RIGHT_RELEASE, 0, player);
+      if (input.left !== p.leftHeld) {
+        this.triggers.gameEvent(input.left ? EVENT_LEFT_PUSH : EVENT_LEFT_RELEASE, 0, player);
+        this.touchButton(input.left, player);
+      }
+      if (input.right !== p.rightHeld) {
+        this.triggers.gameEvent(input.right ? EVENT_RIGHT_PUSH : EVENT_RIGHT_RELEASE, 0, player);
+        this.touchButton(input.right, player);
+      }
     }
     // A direction pressed since the last step is the one pressed last; both at
     // once, and right counts as the later. [gdp PlayerObject::switchedDirTo,
@@ -1627,9 +1633,21 @@ export class SimImpl implements Sim, PlayerWorld {
       down = !down;
       if (down) this.pushButton(p);
       else p.releaseButton();
-      if (raise) this.triggers.gameEvent(down ? EVENT_JUMP_PUSH : EVENT_JUMP_RELEASE, 0, player);
+      if (raise) {
+        this.triggers.gameEvent(down ? EVENT_JUMP_PUSH : EVENT_JUMP_RELEASE, 0, player);
+        this.touchButton(down, player);
+      }
     }
     p.rawHeld = held;
+  }
+
+  /**
+   * Every button handleButton is given reaches the armed Touch triggers too,
+   * after the player has had it, unless player 1 is dead.
+   * [gdp GJBaseGameLayer::handleButton :463997-463998]
+   */
+  private touchButton(push: boolean, player: number): void {
+    if (!this.p1.dead) this.triggers.playerButton(push, player === 1);
   }
 
   /**

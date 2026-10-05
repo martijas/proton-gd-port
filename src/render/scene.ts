@@ -335,6 +335,7 @@ export class Scene {
     // icon units have to be claimed again after it.
     this.boundPages = [];
     this.particles?.reset();
+    this.particleCursor = sim ? sim.triggers.events.length : 0;
     this.list?.reset();
     this.waves.clear();
     this.live = sim
@@ -512,6 +513,71 @@ export class Scene {
     if (sim.waves.length > 0) {
       const ctx = this.waveContext(sim);
       for (const w of sim.waves) for (const made of wavesFor(w, ctx)) this.waves.add(made);
+    }
+    this.spawnTriggerParticles(sim);
+  }
+
+  /** How many of the trigger events the Spawn Particle pass has seen. */
+  private particleCursor = 0;
+  private readonly spawnM = new Float64Array(9);
+
+  /**
+   * The systems this tick's Spawn Particle triggers made. The place is the
+   * key 71 group's object (else the trigger's own), moved by keys 547/548
+   * and a random share of 549/550; the turn keys 552/553, plus that object's
+   * own with key 551; the scale keys 554/555, a 0 counting as 1. Each Custom
+   * Particles object in the particle group is spawned where it sits relative
+   * to its group's main object, turned and scaled about the place with it,
+   * or at the place itself when the group has no main object.
+   * [gdp GJBaseGameLayer::spawnParticleTrigger :431433-431494, then
+   *  :431315-431416]
+   */
+  private spawnTriggerParticles(sim: Sim): void {
+    const events = sim.triggers.events;
+    if (this.particleCursor > events.length) this.particleCursor = events.length;
+    const field = this.particles;
+    const level = this.level;
+    for (; this.particleCursor < events.length; this.particleCursor++) {
+      const e = events[this.particleCursor];
+      if (e.kind !== "particle" || e.group === undefined || !field || !level || !this.particlesEnabled) continue;
+      const trig = sim.triggers;
+      const props = level.objects[e.id].props;
+      const key = (k: number): number => Number(props[k] ?? 0) || 0;
+      const vary = (k: number): number => (Math.random() * 2 - 1) * key(k);
+      const m = this.spawnM;
+      let angle = key(552) + vary(553);
+      const scale = key(554) + vary(555) || 1;
+      const anchor = e.anchor !== undefined && e.anchor >= 0 ? e.anchor : e.id;
+      const [ax, ay] = trig.objectPosition(anchor);
+      if (anchor !== e.id && key(551) !== 0) {
+        trig.objectTransform(anchor, m);
+        angle += level.objects[anchor].rotation + m[6];
+      }
+      const bx = ax + key(547) + vary(549);
+      const by = ay + key(548) + vary(550);
+      const main = trig.mainObjectOf(e.group);
+      const [mx, my] = main >= 0 ? trig.objectPosition(main) : [0, 0];
+      const t = (-angle * Math.PI) / 180;
+      const cos = Math.cos(t);
+      const sin = Math.sin(t);
+      for (const i of trig.groupMembers(e.group)) {
+        const o = level.objects[i];
+        if (o.id !== 2065) continue;
+        let x = bx;
+        let y = by;
+        if (main >= 0) {
+          const [ox, oy] = trig.objectPosition(i);
+          // rotateCCPoint turns counter-clockwise; −angle undoes a clockwise turn.
+          const dx = ox - mx;
+          const dy = oy - my;
+          x += (dx * cos - dy * sin) * scale;
+          y += (dx * sin + dy * cos) * scale;
+        }
+        const moved = trig.objectTransform(i, m);
+        const sx = (o.flipX ? -1 : 1) * o.scaleX * (moved ? m[7] : 1) * scale;
+        const sy = (o.flipY ? -1 : 1) * o.scaleY * (moved ? m[8] : 1) * scale;
+        field.spawn(o, x, y, o.rotation + (moved ? m[6] : 0) + angle, sx, sy);
+      }
     }
   }
 

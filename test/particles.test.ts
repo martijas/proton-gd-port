@@ -453,6 +453,22 @@ test("a hidden emitter (key 135) never claims a system", () => {
   assert.equal(hidden.emitterCount, 0);
 });
 
+test("a Spawn Particle trigger's system is a one-shot copy, even of a hidden object, gone once spent", () => {
+  // Duration -1 becomes 0: one step's burst, then the particles live out
+  // their 0.5 s and the system goes. [gdp spawnParticleTrigger :431365-431412]
+  const level = emptyLevel([{ id: CUSTOM_PARTICLE_ID, x: 300, y: 2000, props: { 145: customString({ 0: 5, 2: 0.5, 4: -1 }), 135: "1" } }]);
+  const field = new ParticleField(level, particleAtlas());
+  assert.equal(field.emitterCount, 0, "hidden: no placed system");
+  const view = { x0: 0, y0: -400, x1: 900, y1: 400 };
+  const frame = () => field.update(1 / 10, view, { levelTime: 0, colors: null, animationsOf: () => 0 });
+  field.spawn(level.objects[level.objects.length - 1], 450, 100, 0, 1, 1);
+  const first = frame();
+  assert.equal(first.count, 5, "the whole burst");
+  assert.ok(Math.abs(first.data[4] - 450) < 30, `at the spawn point (x ${first.data[4]})`);
+  for (let i = 0; i < 5; i++) frame();
+  assert.equal(frame().count, 0, "spent");
+});
+
 test("an emitter in a group a toggle switched off hands its system back", () => {
   // [GJBaseGameLayer::preUpdateVisibility :452902]
   const level = emptyLevel([{ id: CUSTOM_PARTICLE_ID, x: 300, y: 100, props: { 145: customString() } }]);

@@ -362,6 +362,11 @@ export interface PulseAction {
   detailOnly: boolean;
   /** Ramp the shift in over the fade rather than applying it at full strength. */
   animateHsv: boolean;
+  /** The Pulse trigger that started it, and its control id, for Stop. */
+  trigger?: number;
+  controlId?: number;
+  /** Paused by a Stop trigger: it holds where it is. */
+  paused?: boolean;
 }
 
 /**
@@ -610,6 +615,27 @@ export class ColorTable implements ColorSource {
     return this.opacity[id];
   }
 
+  /**
+   * Stop (mode 0), Pause (1) or Resume (2) on the pulses `hit` picks. A
+   * stopped pulse goes at once, so its colour is gone on the next rebuild.
+   * [gdp GJEffectManager::controlActionsForTrigger :484941-485006]
+   */
+  controlPulses(hit: (p: PulseAction) => boolean, mode: number): void {
+    const apply = (list: PulseAction[]): PulseAction[] => {
+      if (mode !== 0) {
+        for (const p of list) if (hit(p)) p.paused = mode === 1;
+        return list;
+      }
+      return list.some(hit) ? list.filter((p) => !hit(p)) : list;
+    };
+    this.channelPulses = apply(this.channelPulses);
+    for (const [group, list] of [...this.groupPulses]) {
+      const kept = apply(list);
+      if (kept.length === 0) this.groupPulses.delete(group);
+      else if (kept !== list) this.groupPulses.set(group, kept);
+    }
+  }
+
   /** Drops every pulse, as a respawn does. [gdp removeAllPulseActions :475853] */
   clearPulses(): void {
     this.channelPulses = [];
@@ -667,7 +693,7 @@ export class ColorTable implements ColorSource {
   }
 
   private stepPulse(p: PulseAction, dt: number): void {
-    p.elapsed += dt;
+    if (!p.paused) p.elapsed += dt;
     p.value = pulseEnvelope(p.elapsed, p.fadeIn, p.hold, p.fadeOut);
   }
 

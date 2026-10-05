@@ -19,7 +19,7 @@ import { buildTriggerIndex, type TriggerSpec } from "../src/triggers/spec";
 import { closestDirection, mergeRemap, ownRemap } from "../src/triggers/runtime";
 import { multipliedColorValue, pulseEnvelope } from "../src/render/colors";
 import type { ObjectsFile } from "../src/assets/objectTypes";
-import { LEVELS_DIR, loadObjectTable, loadOfficialLevel, makeSim, builtPath } from "./helpers";
+import { LEVELS_DIR, loadObjectTable, loadOfficialLevel, makeSim, builtPath, readMacro } from "./helpers";
 import { buildLevel, emptyLevel, makeHeader, simOn, stepN } from "./levelKit";
 import { NO_INPUT, type PlayerInput } from "../src/physics/types";
 
@@ -1077,4 +1077,156 @@ test("Camera Mode's key 111 frees the corridor, as a free-mode portal does", () 
   assert.ok(Number.isFinite(sim.ceilingY), "the ship's band");
   stepN(sim, NO_INPUT, 60);
   assert.equal(sim.ceilingY, Number.POSITIVE_INFINITY, "free mode: no band");
+});
+
+// --- Stop, Touch and keyframes ------------------------------------------------
+
+/** A level of `extra`, with each object's groups set from `groups` (by its place in `extra`). */
+function grouped(extra: NonNullable<Parameters<typeof emptyLevel>[0]>, groups: Record<number, number[]>) {
+  const level = emptyLevel(extra);
+  const first = level.objects.length - extra.length;
+  for (const [k, g] of Object.entries(groups)) level.objects[first + Number(k)].groups = g;
+  return { level, at: (k: number) => first + k };
+}
+
+test("Stop ends what the triggers in its group started, not the moves aimed at that group", () => {
+  // A Move in group 5 carries group 9's block 300 units over 2 s; a Stop on
+  // group 5 freezes it part-way, one on group 9 does nothing.
+  // [gdp controlTriggersInGroup :468242ff → controlActionsForTrigger :484607]
+  const run = (stopGroup: string) => {
+    const { level, at } = grouped(
+      [
+        { id: 901, x: 30, y: 300, props: { 51: "9", 28: "300", 10: "2" } },
+        { id: 1616, x: 150, y: 300, props: { 51: stopGroup } },
+        { id: 1, x: 900, y: 600 },
+      ],
+      { 0: [5], 2: [9] },
+    );
+    const sim = simOn(level);
+    stepN(sim, NO_INPUT, 600);
+    return sim.triggers.objectPosition(at(2))[0] - 900;
+  };
+  const stopped = run("5");
+  assert.ok(stopped > 0 && stopped < 300, `stopped part-way: ${stopped}`);
+  near(run("9"), 300, 1e-6, "a Stop on the moved group leaves the move alone");
+});
+
+test("Stop takes a Pulse trigger's pulse away at once", () => {
+  // [gdp controlActionsForTrigger :484941-484968 (erase by the trigger's id)]
+  const { level } = grouped(
+    [
+      { id: 1006, x: 30, y: 300, props: { 51: "9", 52: "1", 7: "255", 8: "0", 9: "0", 46: "5" } },
+      { id: 1616, x: 150, y: 300, props: { 51: "5" } },
+      { id: 1, x: 900, y: 600 },
+    ],
+    { 0: [5], 2: [9] },
+  );
+  const sim = makeSim(level, undefined, { visuals: true, start: { x: 15, y: 45 } });
+  stepN(sim, NO_INPUT, 40);
+  assert.equal(sim.triggers.colors.pulsesForGroup(9)?.length, 1, "pulsing");
+  stepN(sim, NO_INPUT, 160);
+  assert.equal(sim.triggers.colors.pulsesForGroup(9), undefined, "gone after the Stop");
+});
+
+test("a Touch trigger switches its group on each press, as its mode says, until a Stop ends it", () => {
+  // Group 6 starts off; the Touch arms at x 60. A press turns it on (mode 1);
+  // with mode 0 each press toggles it. A Stop on the touch's group ends it.
+  // [gdp GJEffectManager::playerButton :482526; handleButton :463997]
+  const jump: PlayerInput = { jump: true, left: false, right: false };
+  const press = (sim: ReturnType<typeof simOn>) => {
+    stepN(sim, jump, 1);
+    stepN(sim, NO_INPUT, 40);
+  };
+  const level = (mode: string, stop = false) =>
+    grouped(
+      [
+        { id: 1049, x: 0, y: 300, props: { 51: "6", 56: "0" } },
+        { id: 1595, x: 60, y: 300, props: { 51: "6", 82: mode } },
+        { id: 1, x: 2500, y: 600 },
+        ...(stop ? [{ id: 1616, x: 400, y: 300, props: { 51: "7" } }] : []),
+      ],
+      { 1: [7], 2: [6] },
+    ).level;
+
+  const on = simOn(level("1"));
+  stepN(on, NO_INPUT, 60);
+  assert.equal(on.triggers.groupIsEnabled(6), false, "off before a press");
+  press(on);
+  assert.equal(on.triggers.groupIsEnabled(6), true, "a press turns it on");
+  press(on);
+  assert.equal(on.triggers.groupIsEnabled(6), true, "and on it stays");
+
+  const toggle = simOn(level("0"));
+  stepN(toggle, NO_INPUT, 60);
+  press(toggle);
+  assert.equal(toggle.triggers.groupIsEnabled(6), true);
+  press(toggle);
+  assert.equal(toggle.triggers.groupIsEnabled(6), false, "mode 0 toggles");
+
+  const stopped = simOn(level("1", true));
+  stepN(stopped, NO_INPUT, 330);
+  assert.ok(stopped.state.x > 400, "past the Stop");
+  press(stopped);
+  assert.equal(stopped.triggers.groupIsEnabled(6), false, "a stopped touch hears nothing");
+});
+
+test("a Keyframe Animation trigger carries its group along the keyframes' path", () => {
+  // Two keyframes for group 9, 300 apart, the first 1 s long, uneased along
+  // a straight line. Half a second in is halfway along; at the end it has
+  // gone the whole way. [gdp createKeyframeCommand :489789;
+  //  prepareMoveActions case 5 :486386-486710]
+  const { level, at } = grouped(
+    [
+      { id: 3033, x: 30, y: 300, props: { 76: "20", 520: "1", 521: "1", 522: "1", 523: "1" } },
+      { id: 3032, x: 600, y: 300, props: { 51: "9", 374: "1", 10: "1" } },
+      { id: 3032, x: 900, y: 300, props: { 51: "9", 374: "2" } },
+      { id: 1, x: 600, y: 600 },
+    ],
+    { 1: [20], 2: [21], 3: [9] },
+  );
+  const sim = simOn(level);
+  const x = () => sim.triggers.objectPosition(at(3))[0] - 600;
+  let start = -1;
+  let half = Number.NaN;
+  stepN(sim, NO_INPUT, 400, (s) => {
+    if (start < 0 && x() > 0) start = s.tick;
+    if (start >= 0 && s.tick - start === 119) half = x();
+  });
+  near(half, 150, 3, "halfway");
+  near(x(), 300, 1e-6, "the whole way");
+});
+
+test("Dash's orb runs its keyframe path, and six presses put out the coin", { skip: LEVELS }, async () => {
+  // The orb (group 514) circles on Keyframe Animation 17811; every press
+  // pulses it and adds 1 to item 1, and at 6 the coin's group 537 comes on
+  // and the touch is stopped.
+  // The saved run gets the player there; its own presses count too.
+  const macro = readMacro(22);
+  assert.ok(macro, "Dash's saved run");
+  const sim = makeSim(await loadOfficialLevel(22), undefined, { visuals: true });
+  const triggers = sim.triggers as unknown as { touchActions: readonly unknown[] };
+  const inputs = [...macro.inputs].filter((e) => !e.player2 && e.button === 1).sort((a, b) => a.frame - b.frame);
+  const held: PlayerInput = { jump: false, left: false, right: false };
+  const m = new Float64Array(9);
+  let next = 0;
+  let armed = false;
+  const orb: number[] = [];
+  for (let i = 0; i < 16000 && !sim.state.dead && orb.length < 1200; i++) {
+    while (next < inputs.length && inputs[next].frame <= sim.tick) held.jump = inputs[next++].down;
+    sim.step({ ...held });
+    if (!armed && triggers.touchActions.length > 0) armed = true;
+    if (armed && i % 6 === 0 && triggers.touchActions.length > 0) {
+      sim.triggers.playerButton(true, true);
+      sim.triggers.playerButton(false, true);
+    }
+    if (armed) {
+      sim.triggers.groupTransform(514, m);
+      orb.push(m[4]);
+    }
+  }
+  assert.ok(armed, "the touch arms");
+  assert.equal(sim.triggers.itemCount(1), 6);
+  assert.equal(sim.triggers.groupIsEnabled(537), true, "the coin's group is on");
+  assert.equal(triggers.touchActions.length, 0, "the touch is stopped");
+  assert.ok(Math.max(...orb) - Math.min(...orb) > 100, "the orb moves");
 });

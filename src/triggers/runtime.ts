@@ -62,6 +62,16 @@ import {
   variance,
 } from "./area";
 import { flag, hsvOf, idList, int, isSpawnableTrigger, num, type TriggerIndex, type TriggerSpec } from "./spec";
+import {
+  buildKeyframePath,
+  KEYFRAME_OBJECT_ID,
+  KEYFRAME_TRIGGER_ID,
+  keyframeAnimId,
+  keyframeMods,
+  keyframePose,
+  type KeyframePose,
+  readKeyframe,
+} from "./keyframes";
 
 /** 1x scroll speed, which is what an ordered spawn staggers by. [gdp :421771] */
 export const SPAWN_SPEED = 311.580109;
@@ -292,6 +302,12 @@ export interface TriggerEvent {
    * keeps with the rest. [gdp activatedAudioTrigger :448038-448043]
    */
   at?: number;
+  /**
+   * A Spawn Particle trigger's particle group and the object its key 71 group
+   * places them at (-1 for none), both read through the remap it ran with.
+   */
+  group?: number;
+  anchor?: number;
 }
 
 /** The trigger events that are sound: Song, Edit Song, SFX and Edit SFX. */
@@ -514,6 +530,8 @@ interface SpawnAction {
   baseDelay: number;
   /** The remap chain in force when this was queued, as flat pairs. */
   remap: readonly number[];
+  /** Paused by a Stop trigger: its clock holds. */
+  paused?: boolean;
 }
 
 /**
@@ -574,6 +592,27 @@ interface EventListener {
   group: number;
   /** The Event trigger itself, for the spawn guard. */
   spawner: number;
+  /** The remap chain in force when it was armed, as flat pairs. */
+  remap: readonly number[];
+}
+
+/** An armed Touch trigger (1595): see TriggerRuntime.armTouch. [gdp TouchToggleAction, 44 bytes] */
+interface TouchAction {
+  /** Key 51, already read through the remap in force when it was armed. */
+  group: number;
+  /** Key 81: follows the button while it is held. */
+  hold: boolean;
+  /** Key 82: 0 switches the group over, 1 on, 2 off. */
+  mode: number;
+  /** Key 198: 0 either player, 1 player 1, 2 player 2. */
+  control: number;
+  /** Key 89: answers only player 2's side. */
+  dual: boolean;
+  /** The Touch trigger itself, which a Stop trigger names it by and the spawn guard reads. */
+  trigger: number;
+  controlId: number;
+  /** Paused by a Stop trigger (mode 1) until one resumes it (mode 2). */
+  paused: boolean;
   /** The remap chain in force when it was armed, as flat pairs. */
   remap: readonly number[];
 }
@@ -829,6 +868,7 @@ export interface TriggerSnapshot {
   countListeners: CountListener[];
   eventListeners: readonly EventListener[];
   eventStamps: ReadonlyMap<string, number>;
+  touchActions: readonly TouchAction[];
   points: number;
   levelTime: number;
   levelTimeStopped: boolean;
@@ -930,6 +970,8 @@ export class TriggerRuntime {
    *  the step count +816]
    */
   private eventStamps: Map<string, number> = new Map();
+  /** The armed Touch triggers, oldest first; replaced, never changed in place. */
+  private touchActions: readonly TouchAction[] = [];
   /**
    * The level's points, which a collectible (key 383) adds to and an Item
    * Edit can set; an Item Compare reads them as item type 3. A respawn at a
@@ -1300,6 +1342,7 @@ export class TriggerRuntime {
       countListeners: this.countListeners,
       eventListeners: this.eventListeners,
       eventStamps: this.eventStamps,
+      touchActions: this.touchActions,
       points: this.points,
       levelTime: this.levelTime,
       levelTimeStopped: this.levelTimeStopped,
@@ -1360,6 +1403,7 @@ export class TriggerRuntime {
     this.countListeners = s.countListeners;
     this.eventListeners = s.eventListeners;
     this.eventStamps = s.eventStamps as Map<string, number>;
+    this.touchActions = s.touchActions;
     this.points = s.points;
     this.levelTime = s.levelTime;
     this.levelTimeStopped = s.levelTimeStopped;
@@ -1742,6 +1786,7 @@ export class TriggerRuntime {
     const n = this.spawns.length;
     for (let i = 0; i < n; i++) {
       const a = this.spawns[i];
+      if (a.paused) continue;
       a.remaining -= dt;
       if (a.remaining <= 0) due.push(a);
     }
@@ -1813,7 +1858,15 @@ export class TriggerRuntime {
     }
     for (let pass = 0; pass < COMMAND_PASSES; pass++) {
       for (const c of this.commands) {
-        if (c.finished || c.paused || commandPass(c) !== pass) continue;
+        if (c.paused) continue;
+        // A keyframe works its whole pose out with the scales, then hands
+        // its turn to the rotate pass and its move to the move pass, as the
+        // game's temporary commands do. [gdp prepareMoveActions :486588-486670]
+        if (c.kind === "keyframe" && pass > 0) {
+          this.handOverKeyframe(c, pass);
+          continue;
+        }
+        if (c.finished || commandPass(c) !== pass) continue;
         this.stepOne(c, dt, playerDx, playerDy, cameraDx, cameraDy);
       }
     }
@@ -2121,6 +2174,10 @@ export class TriggerRuntime {
 
   /** One step of one command other than the two follows. */
   private stepOne(c: Command, dt: number, playerDx: number, playerDy: number, cameraDx: number, cameraDy: number): void {
+    if (c.kind === "keyframe") {
+      this.stepKeyframe(c, dt);
+      return;
+    }
     const wasFresh = c.fresh;
     stepCommand(c, dt);
     if (c.kind === "rotate" && c.angle === 0) {
@@ -2194,6 +2251,74 @@ export class TriggerRuntime {
         if (!c.dynamic) c.finished = true;
         break;
       }
+    }
+  }
+
+  /**
+   * One step of a keyframe animation. Its clock runs from the first step,
+   * the one after the trigger fired. The pose is worked out whole, the scale
+   * is applied now (a change of less than a hundredth's size is not), and
+   * the turn and the move wait for their passes; nodes reached spawn their
+   * groups, once each, at once or after their delay.
+   * [gdp GJEffectManager::prepareMoveActions :486386-486710]
+   */
+  private stepKeyframe(c: Command, dt: number): void {
+    const path = c.path;
+    if (!path) {
+      c.finished = true;
+      return;
+    }
+    c.elapsed += dt;
+    const due: number[] = [];
+    const pose = keyframePose(
+      path,
+      c.elapsed,
+      this.keyframeOut,
+      (k) => c.spawned.includes(k),
+      (k) => due.push(k),
+    );
+    c.dueX = pose.x - c.poseX;
+    c.dueY = pose.y - c.poseY;
+    c.poseX = pose.x;
+    c.poseY = pose.y;
+    c.dueRotation = pose.rotation - c.poseRotation;
+    c.poseRotation = pose.rotation;
+    if (Math.abs(pose.scaleX) >= 0.01 && Math.abs(pose.scaleY) >= 0.01) {
+      if (pose.scaleX !== c.poseScaleX || pose.scaleY !== c.poseScaleY) {
+        this.scaleGroup(c.group, c.centre, safeRatio(pose.scaleX, c.poseScaleX), safeRatio(pose.scaleY, c.poseScaleY));
+      }
+      c.poseScaleX = pose.scaleX;
+      c.poseScaleY = pose.scaleY;
+    }
+    if (c.elapsed >= c.duration) c.finished = true;
+    if (due.length === 0) return;
+    c.spawned = [...c.spawned, ...due];
+    const chain = unflatten(c.remap);
+    for (const k of due) {
+      const node = path.nodes[k];
+      const group = this.grp(node.spawnGroup);
+      if (node.spawnDelay <= 0) {
+        this.spawnGroup(group, c.trigger, false, 0, 0, chain);
+        continue;
+      }
+      this.spawns = [
+        ...this.spawns,
+        { group, object: -1, remaining: node.spawnDelay, spawner: c.trigger, ordered: false, baseDelay: 0, remap: c.remap },
+      ];
+    }
+  }
+
+  private readonly keyframeOut: KeyframePose = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 };
+
+  /** A keyframe's turn in the rotate pass, and its move in the move pass. */
+  private handOverKeyframe(c: Command, pass: number): void {
+    if (pass === 1 && c.dueRotation !== 0) {
+      this.rotateGroup(c.group, c.centre, c.dueRotation, false);
+      c.dueRotation = 0;
+    } else if (pass === 3 && (c.dueX !== 0 || c.dueY !== 0)) {
+      this.translateGroup(c.group, c.dueX, c.dueY);
+      c.dueX = 0;
+      c.dueY = 0;
     }
   }
 
@@ -2910,6 +3035,9 @@ export class TriggerRuntime {
       case 1814:
         this.runFollowPlayerY(spec);
         return;
+      case KEYFRAME_TRIGGER_ID:
+        this.runKeyframeAnimation(spec, remap);
+        return;
       case 3006:
         this.runArea(spec, 0);
         return;
@@ -3077,6 +3205,9 @@ export class TriggerRuntime {
       case 3604:
         this.armEvent(spec, remap);
         return;
+      case 1595:
+        this.armTouch(spec, remap);
+        return;
       case 3613:
         this.events.push({ tick: this.tick, kind: "ui", id: spec.index });
         return;
@@ -3101,9 +3232,16 @@ export class TriggerRuntime {
 
       // --- particles ---
       case 2065:
-      case 3608:
         this.events.push({ tick: this.tick, kind: "particle", id: spec.index });
         return;
+      case 3608: {
+        // The particles are drawn by the scene, at where the key 71 group's
+        // object is. [gdp GJBaseGameLayer::spawnParticleTrigger :431433-431494]
+        const anchorGroup = this.grp(int(spec, 71));
+        const anchor = anchorGroup > 0 ? this.targetObject(anchorGroup) : -1;
+        this.events.push({ tick: this.tick, kind: "particle", id: spec.index, group: this.grp(spec.target), anchor });
+        return;
+      }
 
       default:
         // [gdp EffectGameObject::triggerObject :314940-314970]
@@ -3209,6 +3347,8 @@ export class TriggerRuntime {
       mainOnly: flag(spec, 65),
       detailOnly: flag(spec, 66),
       animateHsv: flag(spec, 210),
+      trigger: spec.index,
+      controlId: spec.controlId,
     };
     this.colors.addPulse(p, isGroup, flag(spec, 86));
   }
@@ -3373,6 +3513,7 @@ export class TriggerRuntime {
     const c = newCommand("alpha", group);
     c.duration = spec.duration;
     c.controlId = spec.controlId;
+    c.trigger = spec.index;
     c.fromAlpha = this.groupAlpha[group];
     c.toAlpha = to;
     this.commands = [...this.commands, c];
@@ -3417,22 +3558,56 @@ export class TriggerRuntime {
     this.spawnGroup(this.grp(entries[at * 2]), spec.index, false, 0, depth);
   }
 
+  /**
+   * Stop (key 580 = 0), Pause (1) or Resume (2). It acts on what the triggers
+   * in the target group started — their moves, rotations and the rest, their
+   * pending spawns and their pulses — not on the objects those move; with
+   * key 535 it acts on what carries the target as its control id instead.
+   * [gdp controlTriggersInGroup :468242ff → GJEffectManager::
+   *  controlActionsForTrigger :484607 (by the trigger's +772: 1006 pulses
+   *  :484941, 1268 spawns :485018-485048, ...); controlTriggersWithControlID
+   *  :468055]
+   */
   private runStop(spec: TriggerSpec): void {
     this.fork();
     const mode = int(spec, 580);
     const byControl = flag(spec, 535);
+    const members = new Set(byControl ? [] : (this.index.groups.get(this.grp(spec.target)) ?? []));
     for (const c of this.commands) {
-      const hit = byControl ? c.controlId === spec.target : c.group === this.grp(spec.target);
+      const hit = byControl ? c.controlId === spec.target : members.has(c.trigger);
       if (!hit) continue;
       if (mode === 1) c.paused = true;
       else if (mode === 2) c.paused = false;
       else c.finished = true;
     }
-    if (mode === 0) {
-      this.commands = this.commands.filter((c) => !c.finished);
-      this.spawns = this.spawns.filter((s) => s.group !== this.grp(spec.target));
+    if (mode === 0) this.commands = this.commands.filter((c) => !c.finished);
+    if (!byControl && this.spawns.some((s) => members.has(s.spawner))) {
+      if (mode === 0) this.spawns = this.spawns.filter((s) => !members.has(s.spawner));
+      else for (const s of this.spawns) if (members.has(s.spawner)) s.paused = mode === 1;
+    }
+    if (this.visuals) {
+      this.colors.controlPulses((p) => (byControl ? p.controlId === spec.target : members.has(p.trigger ?? -1)), mode);
     }
     this.stopCameraTweens(spec, mode, byControl);
+    this.stopTouches(spec, mode, byControl);
+  }
+
+  /**
+   * Stop, Pause and Resume on armed Touch triggers: the ones a Touch trigger
+   * in the target group armed, or with the target as their control id. A
+   * stopped one goes; a paused one ignores the button until resumed.
+   * [gdp controlTriggersInGroup :468242ff → GJEffectManager::
+   *  controlActionsForTrigger :484661-484691 (by the trigger's +772);
+   *  controlTriggersWithControlID :468055 (by +1484)]
+   */
+  private stopTouches(spec: TriggerSpec, mode: number, byControl: boolean): void {
+    if (this.touchActions.length === 0) return;
+    const members = byControl ? null : new Set(this.index.groups.get(this.grp(spec.target)) ?? []);
+    const hit = (a: TouchAction): boolean => (byControl ? a.controlId === spec.target : members!.has(a.trigger));
+    if (!this.touchActions.some(hit)) return;
+    this.fork();
+    if (mode === 0) this.touchActions = this.touchActions.filter((a) => !hit(a));
+    else if (mode === 1 || mode === 2) this.touchActions = this.touchActions.map((a) => (hit(a) ? { ...a, paused: mode === 1 } : a));
   }
 
   /**
@@ -3469,6 +3644,7 @@ export class TriggerRuntime {
     c.easing = spec.easing;
     c.easingRate = spec.easingRate;
     c.controlId = spec.controlId;
+    c.trigger = spec.index;
     c.dx = num(spec, 28);
     c.dy = num(spec, 29);
     c.lockPlayerX = flag(spec, 58);
@@ -3540,6 +3716,7 @@ export class TriggerRuntime {
     c.easing = spec.easing;
     c.easingRate = spec.easingRate;
     c.controlId = spec.controlId;
+    c.trigger = spec.index;
     c.angle = num(spec, 68) + num(spec, 69) * 360;
     c.lockRotation = flag(spec, 70);
     // Aim mode replaces the angle outright: the group is turned to face another
@@ -3555,6 +3732,7 @@ export class TriggerRuntime {
       aim.easing = spec.easing;
       aim.easingRate = spec.easingRate;
       aim.controlId = spec.controlId;
+      aim.trigger = spec.index;
       this.fork();
       this.commands = [...this.commands, aim];
       return;
@@ -3574,6 +3752,7 @@ export class TriggerRuntime {
     c.easing = spec.easing;
     c.easingRate = spec.easingRate;
     c.controlId = spec.controlId;
+    c.trigger = spec.index;
     let sx = num(spec, 150, 1) || 1;
     let sy = num(spec, 151, 1) || 1;
     if (flag(spec, 153)) sx = 1 / sx;
@@ -3602,6 +3781,7 @@ export class TriggerRuntime {
     if (c.followModX === 0 && c.followModY === 0) return;
     c.duration = Math.fround(spec.duration);
     c.controlId = spec.controlId;
+    c.trigger = spec.index;
     c.fresh = false;
     this.fork();
     this.commands = [...this.commands, c];
@@ -3624,6 +3804,7 @@ export class TriggerRuntime {
     c.followMaxSpeed = Math.fround(num(spec, 105));
     c.duration = Math.fround(spec.duration);
     c.controlId = spec.controlId;
+    c.trigger = spec.index;
     c.fresh = false;
     this.fork();
     this.commands = [...this.commands, c];
@@ -3652,6 +3833,97 @@ export class TriggerRuntime {
       ...this.eventListeners,
       ...events.map((event) => ({ event, key, group, spawner: spec.index, remap: flat })),
     ];
+  }
+
+  /**
+   * Touch (1595) arms itself and then answers the players' button: key 51
+   * is the group, key 82 switches it on (1), off (2) or over (0), key 81
+   * makes it follow the button while held, key 198 picks player 1 (1) or
+   * player 2 (2), and key 89 answers only player 2's side, which then no
+   * longer moves player 2. Each firing arms another.
+   * [gdp EffectGameObject::customObjectSetup :299161-299187;
+   *  triggerObject :315514-315545 → GJEffectManager::runTouchTriggerCommand
+   *  :485726-485790]
+   */
+  private armTouch(spec: TriggerSpec, remap: Remap): void {
+    this.fork();
+    this.touchActions = [
+      ...this.touchActions,
+      {
+        group: this.grp(spec.target),
+        hold: flag(spec, 81),
+        mode: int(spec, 82),
+        control: int(spec, 198),
+        dual: flag(spec, 89),
+        trigger: spec.index,
+        controlId: spec.controlId,
+        paused: false,
+        remap: flatten(remap),
+      },
+    ];
+  }
+
+  /**
+   * A press or release, of player 1's button or not, that the armed Touch
+   * triggers answer: switching their groups on or off, and spawning them
+   * when on. A release only reaches the ones that follow the button. The
+   * sim calls it for every button a living player 1 sees.
+   * [gdp GJBaseGameLayer::handleButton :463997-463998 →
+   *  GJEffectManager::playerButton :482526-482608 → toggleGroupTriggered
+   *  :423103-423110]
+   */
+  playerButton(push: boolean, player1: boolean): void {
+    for (let i = 0; i < this.touchActions.length; i++) {
+      const a = this.touchActions[i];
+      if (a.paused || (a.dual && player1)) continue;
+      if (a.control === 1 ? !player1 : a.control === 2 ? player1 : a.control !== 0) continue;
+      if (!push && !a.hold) continue;
+      let on: boolean;
+      if (a.mode === 0) on = !this.groupIsEnabled(a.group);
+      else if (a.hold) on = a.mode === 1 ? push : !push;
+      else on = a.mode === 1;
+      this.toggleGroupTriggered(a.group, on, a.trigger, 0, unflatten(a.remap));
+    }
+  }
+
+  /** Whether an armed Touch trigger answers only player 2's side. [gdp GJEffectManager::hasActiveDualTouch :474877-474888] */
+  hasActiveDualTouch(): boolean {
+    return this.touchActions.some((a) => a.dual && !a.paused);
+  }
+
+  /**
+   * Keyframe Animation (3033) plays, for each animation that has a Keyframe
+   * object in its key 76 group, that animation's path on its own key 51 or,
+   * without one, the keyframe's.
+   * [gdp GJBaseGameLayer::playKeyframeAnimation :451933-451995]
+   */
+  private runKeyframeAnimation(spec: TriggerSpec, remap: Remap): void {
+    const mods = keyframeMods(spec.props);
+    const played = new Set<number>();
+    for (const index of this.index.groups.get(this.grp(int(spec, 76))) ?? []) {
+      const o = this.level.objects[index];
+      if (o.id !== KEYFRAME_OBJECT_ID) continue;
+      const anim = keyframeAnimId(o);
+      if (played.has(anim)) continue;
+      played.add(anim);
+      const members = this.index.keyframeAnims.get(anim);
+      if (!members) continue;
+      const path = buildKeyframePath(
+        members.map((i) => readKeyframe(this.level.objects[i])),
+        mods,
+      );
+      if (!path) continue;
+      const target = spec.target > 0 ? spec.target : Math.trunc(Number(o.props[51] ?? 0));
+      const c = newCommand("keyframe", this.grp(target));
+      c.centre = c.group;
+      c.controlId = spec.controlId;
+      c.duration = path.duration;
+      c.path = path;
+      c.trigger = spec.index;
+      c.remap = flatten(remap);
+      this.fork();
+      this.commands = [...this.commands, c];
+    }
   }
 
   /**
@@ -4404,6 +4676,7 @@ export class TriggerRuntime {
       this.onDeath.length === 0 &&
       this.countListeners.length === 0 &&
       this.eventListeners.length === 0 &&
+      this.touchActions.length === 0 &&
       this.points === 0 &&
       !this.levelTimeStopped &&
       this.yHistory === null &&
@@ -4419,6 +4692,7 @@ export class TriggerRuntime {
     h = Math.imul(h ^ this.onDeath.length, 0x01000193);
     h = Math.imul(h ^ this.countListeners.length, 0x01000193);
     for (const l of this.eventListeners) h = Math.imul(h ^ l.event ^ (l.key << 7) ^ (l.group << 14), 0x01000193);
+    for (const a of this.touchActions) h = Math.imul(h ^ a.trigger ^ (a.paused ? 0x40000000 : 0), 0x01000193);
     h = Math.imul(h ^ this.points, 0x01000193);
     // Past the end the level time stands still, which an Item Compare can see.
     if (this.levelTimeStopped) h = Math.imul(h ^ 0x5354, 0x01000193);
@@ -4601,6 +4875,8 @@ const COMMAND_PASSES = 4;
 function commandPass(c: Command): number {
   switch (c.kind) {
     case "scale":
+      return 0;
+    case "keyframe":
       return 0;
     case "rotate":
     case "aim":

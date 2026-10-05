@@ -100,13 +100,13 @@ const STATUS: ReadonlyMap<number, TriggerEntry> = new Map<number, TriggerEntry>(
   // --- scheduling ---
   [1049, DONE],
   [1268, DONE],
-  [1616, DONE],
+  [1616, { status: "partial", note: "stops, pauses or resumes what the triggers in its group started — moves, rotations, scales, follows, alphas, keyframes, pending spawns, pulses, touches and camera tweens — or what carries its control id; colour fades, counts, collisions and timers are not reached" }],
   [1812, DONE],
   [1912, DONE],
   [2068, DONE],
   [3607, { status: "partial", note: "steps its list in order; the stop and loop modes are not read" }],
   [3618, DONE],
-  [1595, { status: "todo", note: "spawns while the screen is held, which needs the input state in the runtime" }],
+  [1595, { status: "partial", note: "every press and release switches its group as its hold, mode, player and dual keys say, and Stop pauses or ends it; a dual touch does not yet keep player 2's presses from moving player 2" }],
 
   // --- movement ---
   [901, { status: "partial", note: "offset, target, direction, silent, dynamic aiming and the player/camera locks are in; the small-step option on key 393 is not" }],
@@ -115,7 +115,7 @@ const STATUS: ReadonlyMap<number, TriggerEntry> = new Map<number, TriggerEntry>(
   [1347, { status: "partial", note: "copies its main object's movement from any cause; the game measures that from a float copy of the position, so a follower of an object a float cannot place exactly creeps a little every step, which this does not" }],
   [1814, DONE],
   [3022, { status: "partial", note: "to its group's object as it stands now, with keep-x/y, gravity, the push along the exit and the camera keys (55, 464, 510); the force and dash redirects (keys 347-350, 591) are not built" }],
-  [3033, { status: "todo", note: "keyframe paths need the keyframe objects read out of the level first" }],
+  [3033, { status: "partial", note: "runs the keyframes' path with their easing, curves, time modes, spins, scales, close loop and spawns, and the trigger's mods; a scale is not turned with a rotated group, and a newer rotation does not take over an older one's group" }],
   [3016, { status: "todo", note: "advanced follow is a separate solver, not the command machinery" }],
   [3660, { status: "todo", note: "edits an advanced-follow command, which does not exist yet" }],
   [3661, { status: "todo", note: "re-targets an advanced-follow command, which does not exist yet" }],
@@ -192,7 +192,7 @@ const STATUS: ReadonlyMap<number, TriggerEntry> = new Map<number, TriggerEntry>(
 
   // --- particles ---
   [2065, { status: "partial", note: "the emitter runs with the game's fades, friction, restarts and colour options, and follows its object's place, turn and scale as its position type says, and draws in its object's layer; a respawn starts every emitter over, where the game's side of that is not traced" }],
-  [3608, { status: "todo", note: "spawns a one-shot burst, which needs the emitter to be startable from a trigger rather than from a placed object" }],
+  [3608, { status: "partial", note: "spawns a one-shot copy of each Custom Particles object in its group at the position group, with the offsets, turn, scale and their variances; the variances use the renderer's random numbers, not the game's" }],
 
   // --- audio ---
   [1934, AUDIO],

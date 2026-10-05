@@ -9,8 +9,9 @@
 // gd-ida-decomp.cpp:716436-716555]
 
 import { easedValue } from "./easing";
+import type { KeyframePath } from "./keyframes";
 
-export type CommandKind = "move" | "rotate" | "scale" | "follow" | "followPlayerY" | "alpha" | "aim";
+export type CommandKind = "move" | "rotate" | "scale" | "follow" | "followPlayerY" | "alpha" | "aim" | "keyframe";
 
 export interface Command {
   kind: CommandKind;
@@ -85,6 +86,24 @@ export interface Command {
   dynamic: boolean;
   /** Aim: degrees added to the angle from the pivot to the target. */
   angleOffset: number;
+  /**
+   * Keyframe: the path (never changed once made, so copies share it), the
+   * pose last handed over, this step's turn and move waiting for their
+   * passes, the nodes whose spawn has gone, and the chain it spawns with.
+   */
+  path: KeyframePath | null;
+  poseX: number;
+  poseY: number;
+  poseRotation: number;
+  poseScaleX: number;
+  poseScaleY: number;
+  dueRotation: number;
+  dueX: number;
+  dueY: number;
+  spawned: readonly number[];
+  remap: readonly number[];
+  /** The trigger that made it, for the spawn guard. */
+  trigger: number;
 }
 
 /** FLT_EPSILON, which is what the game divides by when a duration is zero. */
@@ -132,6 +151,18 @@ export function newCommand(kind: CommandKind, group: number): Command {
     lingering: false,
     dynamic: false,
     angleOffset: 0,
+    path: null,
+    poseX: 0,
+    poseY: 0,
+    poseRotation: 0,
+    poseScaleX: 1,
+    poseScaleY: 1,
+    dueRotation: 0,
+    dueX: 0,
+    dueY: 0,
+    spawned: [],
+    remap: [],
+    trigger: -1,
   };
 }
 

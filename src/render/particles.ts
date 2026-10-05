@@ -1004,6 +1004,18 @@ interface Placed {
   seenScaleY: number;
   /** A system the object's type hangs on it, with its record, or null for a Custom Particles object. */
   builtIn: { p: BuiltInParticle; record: ObjectRecord } | null;
+  /** A one-shot system a Spawn Particle trigger made: it stays where it was put and goes once it is empty. */
+  spawned?: boolean;
+}
+
+/** A Spawn Particle trigger's system, waiting for the next update to start it. */
+interface SpawnRequest {
+  object: LevelObject;
+  x: number;
+  y: number;
+  rotation: number;
+  scaleX: number;
+  scaleY: number;
 }
 
 /** What the live level tells the emitters each frame. */
@@ -1110,6 +1122,13 @@ export class ParticleField {
   readonly missingFrames: number;
   private readonly m9 = new Float64Array(9);
   private readonly scaleOut: [number, number] = [1, 1];
+  /** The Spawn Particle trigger's systems, and every system in the order they draw. */
+  private spawned: Placed[] = [];
+  private drawOrder: Placed[] = this.placed;
+  private pending: SpawnRequest[] = [];
+  /** A Custom Particles object's definition and quad, read the first time a trigger spawns it. */
+  private readonly spawnDefs = new Map<number, { def: ParticleDef; quad: BakedQuad } | null>();
+  private spawnSeed = 0;
 
   /**
    * `zLayerOf` is an object's layer as the game reads it (key 24, else its
@@ -1119,9 +1138,9 @@ export class ParticleField {
    */
   constructor(
     level: Level,
-    atlas: AtlasSet,
-    zLayerOf: (object: LevelObject) => number = (o) => effectiveZLayer(o.zLayer, 0),
-    zOrderOf: (object: LevelObject) => number = (o) => effectiveZOrder(o.zOrder, 0),
+    private readonly atlas: AtlasSet,
+    private readonly zLayerOf: (object: LevelObject) => number = (o) => effectiveZLayer(o.zLayer, 0),
+    private readonly zOrderOf: (object: LevelObject) => number = (o) => effectiveZOrder(o.zOrder, 0),
   ) {
     let missing = 0;
     let index = 0;
@@ -1232,6 +1251,65 @@ export class ParticleField {
       });
     }
     this.placed.sort(byPlace);
+    this.reorder();
+  }
+
+  /** The placed systems and the spawned ones, merged by z and place; the placed draw first on a tie. */
+  private reorder(): void {
+    this.drawOrder = this.spawned.length === 0 ? this.placed : [...this.placed, ...this.spawned].sort(byPlace);
+  }
+
+  /**
+   * A Spawn Particle trigger's system for one Custom Particles object: a
+   * fresh copy of it, at `x`, `y`, turned and scaled as given, started at
+   * the next update and dropped once its burst is spent. One that would run
+   * for ever runs out at once instead.
+   * [gdp GJBaseGameLayer::spawnParticleTrigger :431365-431412 (a fresh
+   *  system at the object's z layer and z order, its duration below 0 set
+   *  to 0, then resumeSystem)]
+   */
+  spawn(object: LevelObject, x: number, y: number, rotation: number, scaleX: number, scaleY: number): void {
+    this.pending.push({ object, x, y, rotation, scaleX, scaleY });
+  }
+
+  private startSpawned(r: SpawnRequest, scene: ParticleScene): void {
+    let found = this.spawnDefs.get(r.object.index);
+    if (found === undefined) {
+      found = null;
+      const def = parseParticleString(r.object.props[145]);
+      const frame = def ? this.atlas.frame(particleFrameName(def)) : null;
+      if (def && frame) {
+        const q = frameQuad(frame.atlas, frame.frame, this.atlas.pxPerUnit);
+        found = {
+          def: { ...def, duration: Math.max(def.duration, 0) },
+          quad: { u0: q.u0, v0: q.v0, du: q.du, dv: q.dv, sheet: frame.atlasIndex, rotated: q.rotated ? 1 : 0 },
+        };
+      }
+      this.spawnDefs.set(r.object.index, found);
+    }
+    if (!found) return;
+    const emitter = new ParticleEmitter(found.def, r.x, r.y, 0x10000 + this.spawnSeed++);
+    const colours = objectColours(r.object, scene.colors);
+    if (colours) emitter.objectBlend(colours.blending);
+    emitter.claim(colours);
+    emitter.restart();
+    emitter.follow(r.x, r.y, r.rotation, r.scaleX, r.scaleY, r.scaleX < 0 || r.scaleY < 0);
+    if (!emitter.grouped && r.scaleY !== 1) emitter.rescale(r.scaleY);
+    const z = containerZ(this.zLayerOf(r.object));
+    this.spawned.push({
+      object: r.object,
+      emitter,
+      quad: found.quad,
+      z,
+      layer: slotOfZ(z),
+      order: this.zOrderOf(r.object),
+      claimed: true,
+      animations: 0,
+      seenScaleX: r.scaleX,
+      seenScaleY: r.scaleY,
+      builtIn: null,
+      spawned: true,
+    });
   }
 
   get emitterCount(): number {
@@ -1248,6 +1326,11 @@ export class ParticleField {
       e.emitter.reset();
       e.claimed = false;
       e.animations = 0;
+    }
+    this.pending = [];
+    if (this.spawned.length > 0) {
+      this.spawned = [];
+      this.reorder();
     }
   }
 
@@ -1269,8 +1352,27 @@ export class ParticleField {
       for (const e of this.placed) e.animations = scene.animationsOf(e.object.index);
     }
     this.lastTime = scene.levelTime;
-    for (const e of this.placed) {
+    if (this.pending.length > 0) {
+      for (const r of this.pending) this.startSpawned(r, scene);
+      this.pending = [];
+      this.reorder();
+    }
+    let spent = false;
+    for (const e of this.drawOrder) {
       const emitter = e.emitter;
+      if (e.spawned) {
+        customOpacity(e.object, emitter, scene);
+        budget = emitter.step(dt, budget);
+        if (!emitter.running && emitter.count === 0) {
+          spent = true;
+          continue;
+        }
+        if (at + emitter.count > MAX_LIVE) break;
+        const from = at;
+        at = emitter.bake(this.data, this.bytes, at, e.quad);
+        if (at > from) this.counted(e, from, at);
+        continue;
+      }
       const scale = this.follow(e, scene);
       // Off screen, or switched off by a group toggle: either way the object
       // is not shown and hands its system back. [GJBaseGameLayer::
@@ -1341,6 +1443,10 @@ export class ParticleField {
       const from = at;
       at = emitter.bake(this.data, this.bytes, at, e.quad);
       if (at > from) this.counted(e, from, at);
+    }
+    if (spent) {
+      this.spawned = this.spawned.filter((e) => e.emitter.running || e.emitter.count > 0);
+      this.reorder();
     }
     this.lastCount = at;
     return { data: this.data, count: at };
