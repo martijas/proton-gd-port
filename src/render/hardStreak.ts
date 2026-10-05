@@ -37,15 +37,6 @@ export const BAND_WIDTH = 6;
 export const CORE_WIDTH = 2;
 /** The core's share of the band's opacity. [updateStroke :389586-389590] */
 export const CORE_OPACITY = 0.65;
-/**
- * The music meter the band's width pulses with. The game reads the song's
- * level each frame, and the port has no metering, so it holds the band at
- * 0.5, the value the game itself uses when it has no song to read (the main
- * menu's running player). [guess: the meter itself; PlayLayer::
- *  updateVisibility :95866-95895 (read into +2156 each frame);
- *  MenuGameLayer::init :237864 (0.5)]
- */
-const METER = 0.5;
 /** How long the band takes to fade away when it stops. [deactivateStreak :147767-147785 (0.2 in play); playerDestroyed :149944] */
 const FADE_OUT = 0.2;
 /** How long the copy left behind by a turn-around takes to fade. [createFadeOutDartStreak :143439 (CCFadeTo 0.5)] */
@@ -66,10 +57,12 @@ const TELEPORT = 30;
 const TURN = 1e-3;
 
 /**
- * The band's width multiplier from the music: (meter − 0.1) × 2.1 + 0.4.
- * [PlayerObject::update :161151-161153]
+ * The band's width multiplier from the music pulse (audio/pulse.ts), which
+ * the game hands the player each frame: (pulse − 0.1) × 2.1 + 0.4.
+ * [PlayerObject::update :161151-161153; PlayLayer::updateVisibility
+ *  :95893-95894 (+2156)]
  */
-export function bandPulse(meter = METER): number {
+export function bandPulse(meter: number): number {
   return Math.fround(Math.fround(Math.fround(meter - 0.1) * 2.1) + 0.4);
 }
 
@@ -361,11 +354,12 @@ export class HardStreak {
    * this frame, which the live band runs to. Returns how many instances to
    * draw.
    */
-  build(quad: EffectQuad, seconds: number, head?: Point): number {
+  build(quad: EffectQuad, seconds: number, pulse: number, head?: Point): number {
     this.count = 0;
     const live = this.live;
-    if (live) this.buildBand(quad, live, seconds, head && live.fadeFrom < 0 ? head : live.head);
-    for (const copy of this.copies) this.buildBand(quad, copy, seconds, copy.head);
+    const k = bandPulse(pulse);
+    if (live) this.buildBand(quad, live, seconds, k, head && live.fadeFrom < 0 ? head : live.head);
+    for (const copy of this.copies) this.buildBand(quad, copy, seconds, k, copy.head);
     return this.count;
   }
 
@@ -374,7 +368,7 @@ export class HardStreak {
    * as the core. [updateStroke :389447-389599 (the passes round the
    * segments)]
    */
-  private buildBand(quad: EffectQuad, band: Band, seconds: number, head: Point): void {
+  private buildBand(quad: EffectQuad, band: Band, seconds: number, pulse: number, head: Point): void {
     const fade = band.fadeFrom < 0 ? 1 : Math.max(0, 1 - (seconds - band.fadeFrom) / band.fadeTime);
     // The opacity goes to GL as a byte. [CCFadeOut on the node, read back
     // through getOpacity :389583-389590]
@@ -383,7 +377,6 @@ export class HardStreak {
     const points = band.points;
     const segments = points.length;
     const passes = band.additive ? 2 : 1;
-    const pulse = bandPulse();
     for (let pass = 0; pass < passes; pass++) {
       const core = pass === 1;
       const width = (core ? CORE_WIDTH : BAND_WIDTH) * band.scale * pulse;

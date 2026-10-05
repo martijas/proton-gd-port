@@ -74,6 +74,12 @@ export interface StringsFile {
    */
   loadingTips: Record<number, string>;
   songs: Record<number, SongInfo>;
+  /**
+   * The beat script each older song pulses to, by song index: times in
+   * seconds and strengths, alternating.
+   * [gdp LevelTools::getAudioString :121729-122057]
+   */
+  songPulses: Record<number, number[]>;
   artists: Record<number, { name: string; url: string | null }>;
   levels: Record<number, LevelFacts & { name: string }>;
   /** What the decompile could not give up, counted rather than invented. */

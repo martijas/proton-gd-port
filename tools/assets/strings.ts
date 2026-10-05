@@ -244,11 +244,64 @@ export function levelReports(...bodies: string[]): Set<string> {
   return out;
 }
 
+/** The install's executable, beside its Resources folder. */
+function exePath(ctx: StepContext): string {
+  return join(ctx.src, "..", "GeometryDash.exe");
+}
+
+/**
+ * The beat scripts the older official songs pulse to: `time~strength~...`,
+ * one per song index. `LevelTools::getAudioString` is a switch whose cases
+ * either carry the text inline, split across several literals, or name a
+ * string constant (`a03208005308008`) the decompile leaves out. IDA names a
+ * constant for the digits it opens with, so each is found again among the
+ * exe's own strings; the inline ones are looked up there too, as a check that
+ * the two agree. A case that loads the empty string has no script.
+ * [gdp LevelTools::getAudioString :121729-122057; AudioEffectsLayer::init
+ *  :329565-329628 (split on "~")]
+ */
+export function songPulses(body: string, exe: Buffer): Record<number, number[]> {
+  const pool: string[] = [];
+  let start = -1;
+  for (let i = 0; i <= exe.length; i++) {
+    const c = exe[i];
+    if (i < exe.length && ((c >= 0x30 && c <= 0x39) || c === 0x2e || c === 0x7e)) {
+      if (start < 0) start = i;
+      continue;
+    }
+    if (start >= 0 && i - start > 100 && exe[i] === 0) pool.push(exe.toString("latin1", start, i));
+    start = -1;
+  }
+  const digits = (s: string): string => s.replace(/[^0-9]/g, "");
+  const out: Record<number, number[]> = {};
+  const cases = [...body.matchAll(/case (\d+):\s*\n\s*v\d+ = ([^;]+);/g)];
+  for (const m of cases) {
+    const index = Number(m[1]);
+    const value = m[2].trim();
+    let text: string;
+    if (value.startsWith('"')) {
+      text = [...value.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((p) => p[1]).join("");
+      if (!pool.includes(text)) throw new Error(`song ${index}'s beat script is not in the exe as the decompile has it`);
+    } else if (/^a\d+$/.test(value)) {
+      const want = value.slice(1);
+      const hits = pool.filter((s) => digits(s.slice(0, 48)).startsWith(want));
+      if (hits.length !== 1) throw new Error(`song ${index}'s beat script (${value}) matched ${hits.length} strings in the exe`);
+      text = hits[0];
+    } else {
+      continue;
+    }
+    const nums = text.split("~").filter((s) => s !== "").map(Number);
+    if (nums.length % 2 !== 0 || nums.some((n) => !Number.isFinite(n))) throw new Error(`song ${index}'s beat script does not parse`);
+    out[index] = nums;
+  }
+  return out;
+}
+
 export const stringsStep: StepModule = {
   name: "strings",
 
   inputs(ctx: StepContext): string[] {
-    return [join(ctx.data, DECOMP)];
+    return [join(ctx.data, DECOMP), exePath(ctx)];
   },
 
   run(ctx: StepContext): StepResult {
@@ -277,6 +330,8 @@ export const stringsStep: StepModule = {
       functionBody(src, "int *__fastcall GameManager::reportPercentageForLevel("),
       functionBody(src, "int *__fastcall GameStatsManager::checkCoinAchievement("),
     );
+    const pulses = songPulses(functionBody(src, "LevelTools *__fastcall LevelTools::getAudioString("), readFileSync(exePath(ctx)));
+    for (let i = 0; i <= 19; i++) if (!pulses[i]) throw new Error(`song ${i} has no beat script`);
     if (colours.length < 100) throw new Error(`the player colour table came back with ${colours.length} entries`);
     if (rewards.size < 200) throw new Error(`the achievement reward table came back with ${rewards.size} entries`);
     const achievements: Record<string, AchievementFacts> = {};
@@ -328,6 +383,7 @@ export const stringsStep: StepModule = {
       achievements,
       loadingTips: Object.fromEntries(tips),
       songs,
+      songPulses: pulses,
       artists,
       levels,
       gaps,

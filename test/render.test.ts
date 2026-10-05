@@ -627,6 +627,9 @@ const FLAT: EffectQuad = { u0: 0.5, v0: 0.5, du: 0.01, dv: 0.01, unit: 13, w: 4,
 const GREEN = { r: 0, g: 255, b: 119 };
 const WIDE_VIEW = { x0: -1e6, x1: 1e6 };
 
+/** The pulse with nothing to follow, as in practice. */
+const PULSE = 0.5;
+
 /** A wave run through `path`, one point a tick. */
 function bandOf(path: Array<[number, number]>, opts: { additive?: boolean; scale?: number; view?: { x0: number; x1: number } } = {}): HardStreak {
   const band = new HardStreak();
@@ -646,9 +649,9 @@ test("the wave's band has a point only where the wave turns", () => {
   // band and a core. [PlayerObject::placeStreakPoint :148159-148189]
   const path: Array<[number, number]> = [[0, 0], ...leg(0, 0, 2.5, 2.5, 10), ...leg(25, 25, 2.5, -2.5, 10)];
   const band = bandOf(path);
-  assert.equal(band.build(FLAT, 20 / 240), 4, "two bands, then two cores");
+  assert.equal(band.build(FLAT, 20 / 240, PULSE), 4, "two bands, then two cores");
   const straight = bandOf([[0, 0], ...leg(0, 0, 2.5, 2.5, 20)]);
-  assert.equal(straight.build(FLAT, 20 / 240), 2, "a straight run is one segment however long");
+  assert.equal(straight.build(FLAT, 20 / 240, PULSE), 2, "a straight run is one segment however long");
 });
 
 test("a bend in the band closes on its outside and overlaps on its inside", () => {
@@ -671,16 +674,16 @@ test("the core's segments meet edge to edge, on the vertical through the point",
 test("the band is 6 wide times the player's scale and the pulse, the core 2", () => {
   // [updateStroke :389471-389477; PlayerObject::update :161151-161153;
   //  togglePlayerScale :150458-150459]
-  assert.ok(Math.abs(bandPulse() - 1.24) < 1e-6, `pulse ${bandPulse()}`);
+  assert.ok(Math.abs(bandPulse(PULSE) - 1.24) < 1e-6, `pulse ${bandPulse(PULSE)}`);
   const across = (band: HardStreak, i: number): number => 2 * Math.hypot(band.data[i * 12 + 2], band.data[i * 12 + 3]);
   const flat: Array<[number, number]> = [[0, 0], ...leg(0, 0, 2.5, 0, 20)];
   const normal = bandOf(flat);
-  assert.equal(normal.build(FLAT, 20 / 240), 2);
-  assert.ok(Math.abs(across(normal, 0) - 6 * bandPulse()) < 1e-6, `band ${across(normal, 0)}`);
-  assert.ok(Math.abs(across(normal, 1) - 2 * bandPulse()) < 1e-6, `core ${across(normal, 1)}`);
+  assert.equal(normal.build(FLAT, 20 / 240, PULSE), 2);
+  assert.ok(Math.abs(across(normal, 0) - 6 * bandPulse(PULSE)) < 1e-6, `band ${across(normal, 0)}`);
+  assert.ok(Math.abs(across(normal, 1) - 2 * bandPulse(PULSE)) < 1e-6, `core ${across(normal, 1)}`);
   const mini = bandOf(flat, { scale: 0.6 });
-  mini.build(FLAT, 20 / 240);
-  assert.ok(Math.abs(across(mini, 0) - 6 * 0.6 * bandPulse()) < 1e-6, `mini band ${across(mini, 0)}`);
+  mini.build(FLAT, 20 / 240, PULSE);
+  assert.ok(Math.abs(across(mini, 0) - 6 * 0.6 * bandPulse(PULSE)) < 1e-6, `mini band ${across(mini, 0)}`);
 });
 
 test("the band adds its colour with a white core over it, or covers alone", () => {
@@ -688,7 +691,7 @@ test("the band adds its colour with a white core over it, or covers alone", () =
   //  (the second white, at 0.65); updateStreakBlend :141933-141951]
   const path: Array<[number, number]> = [[0, 0], ...leg(0, 0, 2.5, 2.5, 10), ...leg(25, 25, 2.5, -2.5, 10)];
   const band = bandOf(path);
-  assert.equal(band.build(FLAT, 20 / 240), 4);
+  assert.equal(band.build(FLAT, 20 / 240, PULSE), 4);
   const bytes = new Uint8Array(band.data.buffer);
   for (let i = 0; i < 2; i++) {
     assert.deepEqual([...bytes.slice(i * 48 + 40, i * 48 + 44)], [0, 255, 119, 255], `band ${i}`);
@@ -698,7 +701,7 @@ test("the band adds its colour with a white core over it, or covers alone", () =
     assert.equal(bytes[core + 46], BLEND.ADD);
   }
   const plain = bandOf(path, { additive: false });
-  assert.equal(plain.build(FLAT, 20 / 240), 2, "made normal, the band alone");
+  assert.equal(plain.build(FLAT, 20 / 240, PULSE), 2, "made normal, the band alone");
   assert.equal(new Uint8Array(plain.data.buffer)[46], BLEND.NORMAL);
 });
 
@@ -708,15 +711,15 @@ test("the band stays whole while the wave lasts and fades for 0.2 s after", () =
   const path: Array<[number, number]> = [[0, 0], ...leg(0, 0, 2.5, 2.5, 240), ...leg(600, 600, 2.5, -2.5, 240)];
   const band = bandOf(path, { additive: false });
   const end = (path.length - 1) / 240;
-  assert.equal(band.build(FLAT, end), 2, "two seconds back, still both segments");
+  assert.equal(band.build(FLAT, end, PULSE), 2, "two seconds back, still both segments");
   assert.equal(new Uint8Array(band.data.buffer)[43], 255, "at full opacity");
   const stop = end + 1 / 240;
   band.track({ x: 1200, y: 0, laying: false, reversed: false }, stop, WIDE_VIEW, 1, false, GREEN);
-  band.build(FLAT, stop + 0.1);
+  band.build(FLAT, stop + 0.1, PULSE);
   const half = new Uint8Array(band.data.buffer)[43];
   assert.ok(Math.abs(half - 127) <= 1, `half way through the fade: ${half}`);
   band.track({ x: 1200, y: 0, laying: false, reversed: false }, stop + 0.2, WIDE_VIEW, 1, false, GREEN);
-  assert.equal(band.build(FLAT, stop + 0.2), 0, "and then gone");
+  assert.equal(band.build(FLAT, stop + 0.2, PULSE), 0, "and then gone");
 });
 
 test("only the point just behind the screen's left edge is kept", () => {
@@ -726,13 +729,13 @@ test("only the point just behind the screen's left edge is kept", () => {
   const path: Array<[number, number]> = [[0, 0]];
   for (let k = 0; k < 6; k++) path.push(...leg(25 * k, k % 2 === 0 ? 0 : 25, 2.5, k % 2 === 0 ? 2.5 : -2.5, 10));
   const band = bandOf(path, { additive: false, view: { x0: 60, x1: 1e6 } });
-  assert.equal(band.build(FLAT, path.length / 240), 4, "from the turn at 50 on: 50, 75, 100, 125 and the head");
+  assert.equal(band.build(FLAT, path.length / 240, PULSE), 4, "from the turn at 50 on: 50, 75, 100, 125 and the head");
 });
 
 test("a teleport starts the band again rather than drawing across", () => {
   const path: Array<[number, number]> = [[0, 0], ...leg(0, 0, 2.5, 2.5, 10), ...leg(500, 0, 2.5, 2.5, 10)];
   const band = bandOf(path, { additive: false });
-  assert.equal(band.build(FLAT, path.length / 240), 1, "only the run after the jump");
+  assert.equal(band.build(FLAT, path.length / 240, PULSE), 1, "only the run after the jump");
   assert.ok(band.data[4] > 400, "laid where the player went");
 });
 

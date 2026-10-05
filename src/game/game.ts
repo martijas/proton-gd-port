@@ -294,9 +294,10 @@ export class Game {
   }
 
   /** An online level's official track by its index; out of range is the game's first. */
-  private officialTrack(index: number): { file: string } | null {
-    const song = this.strings.song(index) ?? this.strings.song(0);
-    return song ? { file: song.file } : null;
+  private officialTrack(index: number): { file: string; index: number } | null {
+    const own = this.strings.song(index);
+    const song = own ?? this.strings.song(0);
+    return song ? { file: song.file, index: own ? index : 0 } : null;
   }
 
   private async begin(start: Pick<LevelRun, "id" | "name" | "level" | "online" | "demo" | "practice">, track: LevelTrack | undefined): Promise<void> {
@@ -665,6 +666,7 @@ export class Game {
     if (this.sim) {
       const c = this.scene.camera.centre();
       this.audio?.update(this.sim, [c.x, c.y]);
+      if (this.audio && !this.loading) this.scene.pulse = this.audio.pulse(this.stack.freezesLevel ? 0 : dt, this.run?.practice ?? false);
     }
     // Under the pause menu the level's own clock stops too, not only the
     // run: the colours, pulses, screen effects and particles hold still.

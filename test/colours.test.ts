@@ -26,6 +26,7 @@ import {
   DrawList,
   blendChannelOf,
   objectChannels,
+  rodBallFrame,
   rotationBase,
   rotationSpeed,
   type LiveScene,
@@ -1059,4 +1060,89 @@ test("a linked teleport draws its exit 10 to the left and key 54 up, flipped the
   near(floatsOf(data, 2).slice(4), [300, 90], "the portal");
   near(floatsOf(data, 3).slice(4), [290, 210], "the exit");
   assert.ok(floatsOf(data, 3)[0] < 0 && floatsOf(data, 2)[0] > 0, "the exit is flipped the other way");
+});
+
+// --- rods ---------------------------------------------------------------------------
+
+/** A rod 10 by 42 units, and the three balls, 20 units across, at 4 px a unit. */
+function rodAtlas(): AtlasSet {
+  const frames = [
+    { n: "rod_01_001.png", x: 0, y: 0, w: 40, h: 168 },
+    ...[1, 2, 3].map((k) => ({ n: `rod_ball_0${k}_001.png`, x: 40 + k * 90, y: 0, w: 80, h: 80 })),
+  ];
+  const file: AtlasFile = {
+    version: 1,
+    res: "uhd",
+    pxPerUnit: 4,
+    atlases: [{ name: "t", image: "t.png", w: 512, h: 256, frames }],
+    frames: Object.fromEntries(frames.map((f, k) => [f.n, [0, k]])),
+  };
+  return new (AtlasSet as unknown as new (f: AtlasFile) => AtlasSet)(file);
+}
+
+const rodRecord: ObjectRecord = {
+  ...baseOnly,
+  f: "rod_01_001.png",
+  bc: 1004,
+  dc: undefined,
+  zl: 1,
+  zo: -6,
+  ch: [{ f: "rod_ball_01_001.png", dx: 0, dy: 31, z: 1, bl: 1 }],
+};
+
+test("a rod's ball is an object of its own: P1, over the rod's top, pulsing about its centre", () => {
+  // [PlayLayer::addObject :90318-90345: the ball (37) takes P1 unless the
+  //  rod's colour is not 1004, the rod is left white; customSetup 37
+  //  :180263-180270 (layer 3, order 10, the music's scale)]
+  const header = makeHeader();
+  header.colors.set(5, entry(5, { r: 0, g: 0, b: 200 }));
+  const table = ColorTable.resolve(header, { player1: { r: 255, g: 100, b: 0 }, player2: { r: 0, g: 255, b: 255 } });
+  const p1 = table.get(CHANNEL.P1);
+  const drawnAt = (over: Partial<LevelObject>, pulse: number) => {
+    const level: Level = { header, objects: [{ ...object(15, {}, { x: 100, y: 50, ...over }), index: 0 }], lengthUnits: 1000 };
+    const list = DrawList.build(level, () => rodRecord, rodAtlas(), table);
+    const data = list.visible(VIEW, { ...liveWith(table), pulse: () => pulse }, 0);
+    const bytes = new Uint8Array(data.buffer);
+    assert.equal(list.visibleCount, 2, "the rod and its ball");
+    const sprite = (i: number) => ({ at: floatsOf(data, i), rgb: [bytes[i * INSTANCE_BYTES + 40], bytes[i * INSTANCE_BYTES + 41], bytes[i * INSTANCE_BYTES + 42]], blend: bytes[i * INSTANCE_BYTES + 46] });
+    return { rod: sprite(0), ball: sprite(1) };
+  };
+  const plain = drawnAt({}, 0.5);
+  assert.deepEqual(plain.rod.rgb, [255, 255, 255], "the rod is white");
+  assert.deepEqual(plain.ball.rgb, [p1.r, p1.g, p1.b], "the ball is in P1");
+  assert.equal(plain.ball.blend, BLEND.ADD_SPRITE, "and adds, as P1 does");
+  near(plain.ball.at.slice(4), [100, 50 + 21 + 10], "10 over the rod's top");
+  near([plain.ball.at[0]], [10 * 0.5], "half its size at a pulse of 0.5");
+  near([drawnAt({}, 0.1).ball.at[0]], [10 * 0.1], "a tenth of it at rest");
+  const keyed = drawnAt({ baseColor: 5 }, 0.5);
+  assert.deepEqual(keyed.ball.rgb, [0, 0, 200], "key 21 goes to the ball");
+  assert.deepEqual(keyed.rod.rgb, [255, 255, 255], "and the rod stays white");
+  assert.equal(keyed.ball.blend, BLEND.NORMAL);
+  const turned = drawnAt({ rotation: 90 }, 1);
+  near(turned.ball.at.slice(4), [100 + 31, 50], "a turned rod carries its ball round");
+  near(turned.ball.at.slice(0, 2), [10, 0], "but the ball itself is not turned");
+});
+
+test("an orb scales with the music about its own position, unless key 372 stops it", () => {
+  // [updateVisibility :96000-96009; RingObject::setRScale :298067-298077]
+  const table = ColorTable.resolve(makeHeader());
+  const width = (props: Record<number, string>, pulse: number | null): number => {
+    const list = build([object(36, props, { x: 40, y: 20 })], { 36: baseOnly }, table);
+    const live = pulse === null ? liveWith(table) : { ...liveWith(table), pulse: () => pulse };
+    const data = list.visible(VIEW, live, 0);
+    near(floatsOf(data, 0).slice(4), [40, 20], "it stays where it is");
+    return floatsOf(data, 0)[0];
+  };
+  near([width({}, 0.5)], [15 * 0.8], "0.3 over a pulse of 0.5");
+  near([width({}, 1.1)], [15 * 1.2], "no more than 1.2");
+  near([width({}, null)], [15], "still without music");
+  near([width({ 372: "1" }, 0.5)], [15], "key 372");
+});
+
+test("the level's rods all carry the same ball, a ring half the time", () => {
+  // [PlayLayer::init :107006-107008; GameObject::getBallFrame]
+  assert.equal(rodBallFrame(0), "rod_ball_01_001.png");
+  assert.equal(rodBallFrame(0.5), "rod_ball_02_001.png");
+  assert.equal(rodBallFrame(0.74), "rod_ball_02_001.png");
+  assert.equal(rodBallFrame(1), "rod_ball_03_001.png");
 });

@@ -14,6 +14,7 @@ import { LevelAudio, loopFromStart } from "./levelAudio";
 import { MENU_MUSIC, musicPath, sfxPath, songPath, triggerSfxName, UI_SOUNDS, type UiSound } from "./names";
 import { MusicMixer } from "./music";
 import { pitchShift } from "./pitchShift";
+import { isMetered, MeterPulse, PULSE_FLAT, ScriptPulse } from "./pulse";
 import { SfxPlayer } from "./sfx";
 
 /** The one-shots outside the triggers that a level can play. */
@@ -30,6 +31,12 @@ export class GameAudio {
   private level: LevelAudio | null = null;
   /** The level's own track, held decoded while the level is loaded. */
   private track: string | null = null;
+  /** The loaded level's pulse: its song's beat script, or the meter when it has none. */
+  private script: ScriptPulse | null = null;
+  private readonly meter = new MeterPulse();
+  /** The two halves of the music's mix, for the meter's peak. */
+  private readonly taps: AnalyserNode[];
+  private readonly samples = new Float32Array(1024);
 
   constructor(
     private readonly strings: Strings,
@@ -39,6 +46,23 @@ export class GameAudio {
     this.library = new AudioLibrary(this.engine.ctx);
     this.mixer = new MusicMixer(this.engine.ctx, this.engine.musicBus, this.library);
     this.sfxPlayer = new SfxPlayer(this.engine.ctx, this.engine.sfxBus, (name, pitch, fft) => this.sound(name, pitch, fft));
+    const ctx = this.engine.ctx;
+    // Up-mixed to stereo first, so a mono song reaches both halves and
+    // averages to itself, as FMOD reads a mono one's single channel. A
+    // splitter's own interpretation is fixed at discrete.
+    const stereo = ctx.createGain();
+    stereo.channelCount = 2;
+    stereo.channelCountMode = "explicit";
+    stereo.channelInterpretation = "speakers";
+    const split = ctx.createChannelSplitter(2);
+    this.mixer.mix.connect(stereo);
+    stereo.connect(split);
+    this.taps = [0, 1].map((ch) => {
+      const tap = ctx.createAnalyser();
+      tap.fftSize = this.samples.length;
+      split.connect(tap, ch);
+      return tap;
+    });
   }
 
   /** Decodes the interface sounds. Cheap, and they are wanted immediately. */
@@ -59,7 +83,11 @@ export class GameAudio {
     const codec = this.library.codec ?? "ogg";
     if (this.track) this.library.release(this.track);
     this.library.clearPrefetched();
-    this.track = track === undefined ? this.trackPath(levelId, codec) : track && pathOf(track, codec);
+    const chosen = track === undefined ? (this.strings.levelTrack(levelId) ?? null) : track;
+    this.track = chosen && pathOf(chosen, codec);
+    const script = chosen && "file" in chosen && !isMetered(chosen) ? this.strings.songPulse(chosen.index ?? -1) : undefined;
+    this.script = script ? new ScriptPulse(script) : null;
+    this.meter.enable();
     const levelAudio = new LevelAudio(level, levelId, this.track, this.mixer, this.sfxPlayer, codec);
     this.level = levelAudio;
     const jobs: Promise<unknown>[] = [];
@@ -86,21 +114,45 @@ export class GameAudio {
     await Promise.all(jobs);
   }
 
-  /** The level's music: an official track, or a tower floor's library song. */
-  private trackPath(levelId: number, codec: "ogg" | "m4a"): string | null {
-    const track = this.strings.levelTrack(levelId);
-    return track ? pathOf(track, codec) : null;
-  }
-
   /** A fresh attempt; `musicTime` overrides where the music starts (the debug page's jump). */
   startAttempt(sim: Sim, practice: boolean, musicTime?: number): void {
     this.mixer.stop(MENU_CHANNEL);
+    this.script?.restart();
     this.forSim(sim)?.startAttempt(sim, practice, musicTime);
   }
 
   /** Back at a checkpoint; `kept` is what Sim.respawnFrom returned. */
   respawn(sim: Sim, practice: boolean, kept: number): void {
+    this.script?.restart();
     this.forSim(sim)?.respawn(sim, practice, kept);
+  }
+
+  /**
+   * One frame of the music pulse, `dt` its length (0 while the level is held
+   * still), and the pulse to draw with.
+   * [gdp PlayLayer::updateVisibility :95866-95895]
+   */
+  pulse(dt: number, practice: boolean): number {
+    const script = this.script;
+    if (script) script.step(dt, practice);
+    else this.meter.step(dt, () => this.peak());
+    if (practice || this.engine.musicBus.gain.value <= 0) return PULSE_FLAT;
+    return script ? script.value : this.meter.value;
+  }
+
+  /** The music's peak over the last block, both halves averaged. */
+  private peak(): number {
+    let sum = 0;
+    for (const tap of this.taps) {
+      tap.getFloatTimeDomainData(this.samples);
+      let peak = 0;
+      for (const v of this.samples) {
+        const a = v < 0 ? -v : v;
+        if (a > peak) peak = a;
+      }
+      sum += peak;
+    }
+    return sum / this.taps.length;
   }
 
   /** The loaded level's sound, if the sim is on that level. */
@@ -219,8 +271,11 @@ export class GameAudio {
   }
 }
 
-/** A level's music: an official track's file, or a custom song by id. Null is silence. */
-export type LevelTrack = { file: string } | { songId: number } | null;
+/**
+ * A level's music: an official track's file, with its song index when known,
+ * or a custom song by id. Null is silence.
+ */
+export type LevelTrack = { file: string; index?: number } | { songId: number } | null;
 
 function pathOf(track: { file: string } | { songId: number }, codec: "ogg" | "m4a"): string {
   return "file" in track ? musicPath(track.file) : songPath(track.songId, codec);

@@ -63,6 +63,7 @@ import {
   type Rgb,
 } from "./colors";
 import { frameQuad } from "./frameQuad";
+import { pulseScale } from "../audio/pulse";
 import {
   animMemo,
   animTimingFor,
@@ -111,6 +112,14 @@ export const BLEND_NEVER = -2;
  *  :612179-612190 (650); +727, read first by shouldBlendColor :166462-166477]
  */
 const NO_BLEND_IDS: ReadonlySet<number> = new Set([15, 16, 17, 650]);
+
+/** The rods, each of which PlayLayer::addObject gives a ball (id 37). [:90318] */
+const ROD_IDS: ReadonlySet<number> = new Set([15, 16, 17]);
+/** The ball's layer and z order. [customSetup 37 :180263-180270] */
+const ROD_BALL_LAYER = 3;
+const ROD_BALL_ORDER = 10;
+/** Where the ball sits above the rod's top. [:90335] */
+const ROD_BALL_RISE = 10;
 
 /**
  * The invisible blocks, spikes and slopes, and the three invisible blades:
@@ -301,6 +310,31 @@ export const AUDIO_SCALE_IDS: ReadonlySet<number> = new Set([
   1057, 1330, 1333, 1582, 1583, 1594, 1704, 1751, 3004, 3027,
 ]);
 
+/** The pulsing decorations customSetup gives a range of their own (+910): 0.8 to 1.2. [customSetup :178766-178771, :179880-179888, :182326-182336] */
+const RANGED_PULSE_IDS: ReadonlySet<number> = new Set([132, 133, 136, 150, 236, 460, 494, 495, 496, 497, 1055, 1056, 1057]);
+
+/**
+ * How the music pulse scales a sprite: not at all; with its object, about
+ * the object's position, as the pulse is (plain), within 0.8-1.2 (ranged) or
+ * as an orb's ring; or about its own centre, as the pulse is — the ball a
+ * rod carries, an object of its own on another object's sprite list.
+ * [pulseScale]
+ */
+const PULSE_NONE = 0;
+const PULSE_PLAIN = 1;
+const PULSE_RANGED = 2;
+const PULSE_RING = 3;
+const PULSE_OWN = 4;
+
+/** The orbs: RingObjects, whose setRScale is their own. [GameObject::createWithKey (RingObject::create)] */
+const RING_IDS: ReadonlySet<number> = new Set([36, 84, 141, 1022, 1330, 1333, 1594, 1704, 1751, 3004, 3027]);
+
+function pulseKindOf(object: LevelObject): number {
+  if (!AUDIO_SCALE_IDS.has(object.id) || objectFlag(object, OBJECT_KEY.noAudioScale)) return PULSE_NONE;
+  if (RING_IDS.has(object.id)) return PULSE_RING;
+  return RANGED_PULSE_IDS.has(object.id) ? PULSE_RANGED : PULSE_PLAIN;
+}
+
 /**
  * How fast a rotating object turns before its sign, in degrees a second, from
  * the roll `r` (0..1) customSetup makes for it; 0 for an object that does not
@@ -415,6 +449,8 @@ export interface LiveScene {
   triggers: TriggerRuntime;
   /** Player 1 has died: the invisible blocks show. [PlayLayer::updateVisibility :96030-96035] */
   playerDead?: () => boolean;
+  /** The music pulse the pulsing objects scale with; without one they hold still. [src/audio/pulse.ts] */
+  pulse?: () => number;
 }
 
 /** Per-sprite data the static bake cannot fold into the instance bytes. */
@@ -453,6 +489,8 @@ interface SpriteMeta {
    * Pending.black.
    */
   black: Uint8Array;
+  /** How the music pulse scales it: a PULSE_* kind. */
+  pulse: Uint8Array;
   /** Index into `flipbooks`, or -1 for a sprite that never changes frame. */
   flip: Int32Array;
   /** Index into `spin` (12 floats each), or -1 for a sprite that does not turn. */
@@ -771,6 +809,7 @@ export class DrawList {
     const slots = this.slots;
     const os = this.objects;
     const moving = live ? live.triggers.hasMotion : false;
+    const pulse = live?.pulse ? live.pulse() : null;
     this.layerRunFirst.fill(0);
     this.layerRuns.fill(0);
     let nodeRuns = 0;
@@ -839,7 +878,9 @@ export class DrawList {
       if (live) alpha = this.shade(at, i, o, live);
       alpha *= frameAlpha * (meta.glow[i] === 1 ? os.glowAlpha[o] : os.alpha[o]);
       if (alpha <= 0) continue;
-      if (os.dx[o] !== 0 || os.dy[o] !== 0 || os.scale[o] !== 1) this.pose(at, o);
+      const pulseKind = meta.pulse[i];
+      if (pulseKind !== PULSE_NONE && pulse !== null) this.pulseSprite(at, o, pulseKind, pulse);
+      if (os.dx[o] !== 0 || os.dy[o] !== 0 || (os.scale[o] !== 1 && pulseKind !== PULSE_OWN)) this.pose(at, o, pulseKind !== PULSE_OWN);
       // setGlowColor recolours the glow alone; the object's other sprites
       // keep their channels'. [GameObject::setGlowColor :164902-164915]
       if (os.tint[o] >= 0 && meta.glow[i] === 1) {
@@ -1124,11 +1165,11 @@ export class DrawList {
   }
 
   /** Moves and scales a sprite with its object's enter pose, about the object's position. */
-  private pose(at: number, o: number): void {
+  private pose(at: number, o: number, scales: boolean): void {
     const os = this.objects;
     const s = this.scratch;
     const k = os.scale[o];
-    if (k !== 1) {
+    if (k !== 1 && scales) {
       const ox = os.px[o];
       const oy = os.py[o];
       s[at] *= k;
@@ -1140,6 +1181,22 @@ export class DrawList {
     }
     s[at + 4] += os.dx[o];
     s[at + 5] += os.dy[o];
+  }
+
+  /** Scales a sprite with the music pulse, about its object's position or, for PULSE_OWN, its own centre. */
+  private pulseSprite(at: number, o: number, kind: number, pulse: number): void {
+    const k = pulseScale(kind === PULSE_RING ? "ring" : kind === PULSE_RANGED ? "ranged" : "plain", pulse);
+    if (k === 1) return;
+    const s = this.scratch;
+    s[at] *= k;
+    s[at + 1] *= k;
+    s[at + 2] *= k;
+    s[at + 3] *= k;
+    if (kind === PULSE_OWN) return;
+    const ox = this.objects.px[o];
+    const oy = this.objects.py[o];
+    s[at + 4] = ox + (s[at + 4] - ox) * k;
+    s[at + 5] = oy + (s[at + 5] - oy) * k;
   }
 
   /**
@@ -1419,6 +1476,8 @@ interface Pending {
    *  (+540); addCustomBlackChild :166918-166944; setOpacity :167631-167700]
    */
   black: number;
+  /** How the music pulse scales it: a PULSE_* kind, none when unset. */
+  pulse?: number;
 }
 
 /**
@@ -1484,6 +1543,7 @@ function buildDrawList(
   const anims: AnimState[] = [];
   const variable = blendVariableChannels(level);
   const legacy = legacyLayers(level.capacity);
+  const rodBall = rodBallFrame(Math.random());
 
   for (const object of level.objects) {
     const record = render(object.id);
@@ -1547,7 +1607,10 @@ function buildDrawList(
       objects.spinSpeed[i] = speed;
       stats.spinning++;
     }
-    emit(object, record, root, pending, stats, atlas, colors, i, objects, anims, variable, entities, font);
+    const first = pending.length;
+    emit(object, record, root, pending, stats, atlas, colors, i, objects, anims, variable, rodBall, entities, font);
+    const pulse = pulseKindOf(object);
+    for (let p = first; p < pending.length; p++) pending[p].pulse ??= pulse;
   }
 
   // --- the draw order ---
@@ -1645,6 +1708,7 @@ function buildDrawList(
     main: new Uint8Array(Math.max(1, count)),
     glow: new Uint8Array(Math.max(1, count)),
     black: new Uint8Array(Math.max(1, count)),
+    pulse: new Uint8Array(Math.max(1, count)),
     flip: new Int32Array(Math.max(1, count)).fill(-1),
     spin: new Int32Array(Math.max(1, count)).fill(-1),
   };
@@ -1686,6 +1750,7 @@ function buildDrawList(
     meta.main[i] = p.main;
     meta.glow[i] = p.glow;
     meta.black[i] = p.black;
+    meta.pulse[i] = p.pulse ?? PULSE_NONE;
     if (p.book || p.anim) {
       const book = p.book ?? bakeFlipbook(p, atlas);
       if (book) {
@@ -1911,10 +1976,35 @@ const detailArt = new WeakMap<ObjectRecord, boolean>();
  * one and on the base if not. [GameObject::objectFromVector :184334-184378]
  */
 export function objectChannels(object: LevelObject, record: ObjectRecord): { base: number; detail: number } {
+  const own = levelChannels(object, record);
+  // A rod hands its colour to its ball and is left with none: white.
+  // [PlayLayer::addObject :90325-90327 (setDefaultMainColorMode clears the
+  //  custom colour too, :171218-171232)]
+  return ROD_IDS.has(object.id) ? { base: 0, detail: own.detail } : own;
+}
+
+function levelChannels(object: LevelObject, record: ObjectRecord): { base: number; detail: number } {
   const base = object.baseColor ?? record.bc ?? 0;
   const detail = object.detailColor ?? record.dc ?? 0;
   if (object.legacyColor === null) return { base, detail };
   return hasDetail(record) ? { base, detail: object.legacyColor } : { base: object.legacyColor, detail };
+}
+
+/** The ball's colour: P1, unless the rod's level colour is something other than its default. [PlayLayer::addObject :90323-90324; customSetup 37 :180263-180270] */
+function rodBallChannel(object: LevelObject, record: ObjectRecord): number {
+  const own = levelChannels(object, record).base;
+  return own !== CHANNEL.OBJECT ? own : CHANNEL.P1;
+}
+
+/**
+ * Which ball the level's rods carry, from a roll 0..1 made once a level
+ * load: rod_ball_01 (a disc) a quarter of the time, 02 (a ring) half, 03
+ * (a face) a quarter. [PlayLayer::init :107006-107008 (+11824 =
+ *  roundf(r * 2) + 1); GameObject::getBallFrame]
+ */
+export function rodBallFrame(roll: number): string {
+  const n = Math.min(3, Math.max(1, Math.round(roll * 2) + 1));
+  return `rod_ball_0${n}_001.png`;
 }
 
 /**
@@ -2005,6 +2095,7 @@ function emit(
   objects: ObjectState,
   anims: AnimState[],
   variable: ReadonlySet<number>,
+  rodBall: string,
   entities?: ReadonlyMap<string, AnimEntity>,
   font?: LevelFont | null,
 ): void {
@@ -2036,7 +2127,7 @@ function emit(
     const black = slot === "K" && !glow && ownColour === null;
     return {
       channelId: channelFor(slot),
-      shift: black ? null : slot === "D" ? object.detailHsv : object.baseHsv,
+      shift: black || ownColour !== null ? null : slot === "D" ? object.detailHsv : object.baseHsv,
       black,
     };
   };
@@ -2262,12 +2353,54 @@ function emit(
   const mainFrames = mainFrame && animation ? animation.framesFor(mainFrame, mainSlot === "D") : null;
   // The object's own sprite with everything hung on it, in tree order. A
   // don't-draw main sprite still carries its glow and children. [ObjectRecord.dd]
-  tree(record.ch ?? [], IDENTITY, objectAlpha, PART_MAIN, () => {
+  const rod = ROD_IDS.has(object.id);
+  const children = rod ? (record.ch ?? []).filter((c) => !c.f?.startsWith("rod_ball_")) : (record.ch ?? []);
+  tree(children, IDENTITY, objectAlpha, PART_MAIN, () => {
     if (!record.dd) push(mainFrame, mainSlot, objectAlpha, record.bl === 1, IDENTITY, PART_MAIN, mainFrames);
   });
   // The glow goes in its layer's glow batch and always adds rather than covers.
   if (glows) push(record.g, mainSlot, objectAlpha, true, IDENTITY, PART_GLOW, null, null, true);
   emitPortalExtras();
+  if (rod) emitRodBall();
+
+  /**
+   * The ball PlayLayer::addObject hangs over a rod: an object of its own (id
+   * 37) with this level's ball frame, at the rod's top centre and 10 up,
+   * carried by the rod's turn and scale to get there but not turned or
+   * scaled itself, in the rod's groups. It is in P1 or the rod's own colour
+   * and blends as that colour does, on layer 3 at order 10, and pulses with
+   * the music from a tenth of its size. [gdp PlayLayer::addObject
+   *  :90318-90345; customSetup 37 :180263-180270]
+   */
+  function emitRodBall(): void {
+    const found = record.f ? atlas.frame(record.f) : null;
+    if (!found) return;
+    const top = frameSourceSize(found.frame).h / atlas.pxPerUnit / 2 + ROD_BALL_RISE;
+    const at = apply(transform, 0, top);
+    const channel = rodBallChannel(object, record);
+    const blend = blendChannelOf(channel, channel, 37);
+    current = {
+      order,
+      zl: ROD_BALL_LAYER,
+      zo: ROD_BALL_ORDER,
+      mode: parentMode(37),
+      hasColour: false,
+      inFront: false,
+      stays: false,
+      mainBlend: blend,
+      colourBlend: BLEND_NEVER,
+      varies: 0,
+      startState: blendsNow(blend) ? MAIN_BLENDS : 0,
+    };
+    placed = affine(at.x, at.y, 0, 1, 1);
+    ownColour = channel;
+    const first = out.length;
+    push(rodBall, "B", 1, false, IDENTITY, PART_MAIN);
+    for (let p = first; p < out.length; p++) out[p].pulse = PULSE_OWN;
+    ownColour = null;
+    placed = transform;
+    current = node;
+  }
 
   /**
    * What PlayLayer::addObject adds beside a portal. Every portal (and the

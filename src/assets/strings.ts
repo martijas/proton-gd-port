@@ -78,13 +78,18 @@ export class Strings {
     return this.song(facts.song);
   }
 
-  /** What a level's music is: an official track's file, or a custom song id. */
-  levelTrack(levelId: number): { file: string } | { songId: number } | undefined {
+  /** What a level's music is: an official track's file and index, or a custom song id. */
+  levelTrack(levelId: number): { file: string; index: number } | { songId: number } | undefined {
     const facts = this.facts(levelId);
     if (!facts) return undefined;
     if ((facts.songId ?? 0) > 0) return { songId: facts.songId };
     const song = this.song(facts.song);
-    return song ? { file: song.file } : undefined;
+    return song ? { file: song.file, index: facts.song } : undefined;
+  }
+
+  /** The beat script a song pulses to, as alternating times and strengths, if it has one. */
+  songPulse(index: number): readonly number[] | undefined {
+    return this.file.songPulses?.[index];
   }
 
   artist(index: number): string | undefined {

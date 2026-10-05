@@ -55,6 +55,11 @@ export class MusicMixer implements MusicOut {
     this.out.connect(bus);
   }
 
+  /** Every channel mixed, before the music volume: what the pulse meters. */
+  get mix(): AudioNode {
+    return this.out;
+  }
+
   start(channel: number, play: ChannelPlay): void {
     this.stop(channel);
     const fade = this.ctx.createGain();

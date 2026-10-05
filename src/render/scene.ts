@@ -143,6 +143,8 @@ export class Scene {
   private lastMode: GameMode | null = null;
   private colors: ColorTable | null = null;
   private live: LiveScene | null = null;
+  /** The music pulse (audio/pulse.ts) this frame draws with; 0.5 when nothing sets it. */
+  pulse = 0.5;
   private level: Level | null = null;
   private background = { r: 0.1, g: 0.11, b: 0.16 };
   private shakeX = 0;
@@ -335,7 +337,9 @@ export class Scene {
     this.particles?.reset();
     this.list?.reset();
     this.waves.clear();
-    this.live = sim ? { colors: sim.triggers.colors, triggers: sim.triggers, playerDead: () => sim.state.dead } : null;
+    this.live = sim
+      ? { colors: sim.triggers.colors, triggers: sim.triggers, playerDead: () => sim.state.dead, pulse: () => this.pulse }
+      : null;
     if (sim) this.colors = sim.triggers.colors;
   }
 
@@ -1191,7 +1195,7 @@ export class Scene {
       const band = this.bands[i];
       if (band.empty) continue;
       const head = heads[i];
-      const n = band.build(quad, seconds, head ? { x: head.x, y: head.y } : undefined);
+      const n = band.build(quad, seconds, this.pulse, head ? { x: head.x, y: head.y } : undefined);
       if (n > 0) this.batch.draw(band.data, n);
     }
   }
