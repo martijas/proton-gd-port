@@ -463,6 +463,107 @@ export class OptionsScreen implements Screen {
 }
 
 // ---------------------------------------------------------------------------
+// The pause menu's options
+
+/**
+ * What the pause menu's gear opens: the level's own options, not the main
+ * Options pages. One page of the same two columns, 40 apart from 90 above the
+ * centre; slot 8 is held for Practice Music Sync.
+ * [gdp PauseLayer::onSettings :235188; GameOptionsLayer::init :506483 (row
+ *  40, text 0.4), setupOptions :499637-499903; GJOptionsLayer::nextPosition
+ *  :498864, addToggleInternal :499105]
+ */
+const GAME_TOGGLES: readonly (Toggle & { slot: number })[] = [
+  { slot: 0, id: "0026", text: "Auto-Retry", info: "", get: (s) => s.autoRetry, set: (s, on) => void (s.autoRetry = on) },
+  { slot: 1, id: "0027", text: "Auto-Checkpoints", info: "" },
+  { slot: 2, id: "bar", text: "Show Progress Bar", info: "", get: (s) => s.showProgressBar, set: (s, on) => void (s.showProgressBar = on) },
+  { slot: 3, id: "0040", text: "Show Percentage", info: "", get: (s) => s.showPercentage, set: (s, on) => void (s.showPercentage = on) },
+  { slot: 4, id: "0145", text: "Show Time", info: "" },
+  { slot: 5, id: "0144", text: "Audio Visualizer", info: "" },
+  { slot: 6, id: "0109", text: "Show Info Label", info: "" },
+  { slot: 7, id: "0146", text: "Disable Checkpoints", info: "" },
+  { slot: 9, id: "0166", text: "Show Hitboxes", info: "Shows hitboxes while in practice mode." },
+];
+
+/** The locked Practice Music Sync box's grey. [setupOptions :499893-499901] */
+const LOCKED_TINT = { r: 150, g: 150, b: 150 };
+
+export class GameOptionsScreen implements Screen {
+  readonly name = "gameOptions";
+  readonly opaque = false;
+  readonly ticksBelow = false;
+  readonly freezesLevel = true;
+
+  constructor(private readonly game: Game) {}
+
+  enter(): void {
+    this.game.input.clear();
+  }
+
+  build(view: UiViewport): Widget[] {
+    const art = artOf(this.game);
+    const cx = view.width / 2;
+    const cy = view.height / 2;
+    const settings = this.game.save.get().settings;
+    const out: Widget[] = [
+      shade(view, 75 / 255),
+      { kind: "panel", rect: rect(cx - OPTIONS_BOX.w / 2, cy - OPTIONS_BOX.h / 2, OPTIONS_BOX.w, OPTIONS_BOX.h), frame: FRAMES.panel },
+    ];
+    const at = (slot: number) => ({ x: slot % 2 === 0 ? cx - 160 : cx + 32, y: cy + 90 - 40 * Math.floor(slot / 2) });
+    for (const t of GAME_TOGGLES) {
+      const { x, y } = at(t.slot);
+      out.push(...checkbox(art, `toggle:${t.id}`, x, y, t.get?.(settings) ?? false, { scale: 0.8, text: t.text, textScale: 0.4, textWidth: 130 }));
+      if (t.info) out.push(...spriteButton(art, `info:${t.id}`, x - 18, y + 16, FRAMES.infoIcon, { scale: 0.5, sizeMult: 2 }));
+    }
+    const sync = at(8);
+    out.push(...checkbox(art, "toggle:sync", sync.x, sync.y, false, { scale: 0.8, text: "Practice Music Sync", textScale: 0.4, textWidth: 130, tint: LOCKED_TINT }));
+
+    // The two UI buttons, 26 above the bottom edge, 80 either side.
+    // [setupOptions :499830-499853, ButtonSprite at 0.65]
+    const buttonY = cy - OPTIONS_BOX.h / 2 + 26;
+    for (const [id, text, x] of [["platformerUi", "Platformer UI", cx - 80], ["practiceUi", "Practice UI", cx + 80]] as const) {
+      const width = (art.measure?.("goldFont", text).width ?? 120) * 0.65;
+      out.push(textButton(art, id, x, buttonY, text, width, { height: BUTTON_H * 0.65, maxScale: 0.65 }));
+    }
+    // [GJOptionsLayer::init :500128-500142: 0.8, 3 in from the corner]
+    out.push(...spriteButton(art, "close", cx - OPTIONS_BOX.w / 2 + 3, cy + OPTIONS_BOX.h / 2 - 3, FRAMES.close, { scale: 0.8, sizeMult: 1.5 }));
+    return out;
+  }
+
+  onPress(id: string): boolean {
+    if (id === "close") {
+      this.game.stack.pop();
+      return true;
+    }
+    if (id === "platformerUi" || id === "practiceUi" || id === "toggle:sync") {
+      this.game.say(NOT_YET);
+      return true;
+    }
+    const [kind, key] = id.split(":");
+    const toggle = GAME_TOGGLES.find((t) => t.id === key);
+    if (!toggle) return false;
+    if (kind === "info") {
+      this.game.stack.push(new InfoScreen(this.game, "Info", toggle.info));
+      return true;
+    }
+    if (kind === "toggle") {
+      if (toggle.get && toggle.set) changeSettings(this.game, (s) => toggle.set?.(s, !toggle.get?.(s)));
+      else this.game.say(NOT_YET);
+      return true;
+    }
+    return false;
+  }
+
+  onKey(code: string, down: boolean): boolean {
+    if (down && code === "Escape") {
+      this.game.stack.pop();
+      return true;
+    }
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Video Options
 
 const QUALITY_LABELS: Record<TextureQuality, string> = { auto: "Auto", low: "Low", medium: "Medium", high: "High" };

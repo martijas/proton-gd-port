@@ -101,7 +101,8 @@ export interface Totals {
 }
 
 export interface SaveV1 {
-  version: 1;
+  /** 2 since the pause menu's options could set the bar and the percentage; see `migrate`. */
+  version: 2;
   createdAt: string;
   updatedAt: string;
   levels: Record<string, LevelProgress>;
@@ -142,7 +143,7 @@ export function defaultSettings(): Settings {
 export function defaultSave(): SaveV1 {
   const now = new Date().toISOString();
   return {
-    version: 1,
+    version: 2,
     createdAt: now,
     updatedAt: now,
     levels: {},

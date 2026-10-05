@@ -136,8 +136,17 @@ function mergeOnlineLevel(raw: unknown): OnlineLevel | null {
 export function migrate(raw: unknown): SaveV1 {
   const base = defaultSave();
   if (!isObject(raw)) return base;
-  // Only version 1 exists so far. A value from the future is not guessed at —
-  // the fields this version understands are taken and the rest dropped.
+  // A value from the future is not guessed at — the fields this version
+  // understands are taken and the rest dropped.
+  const version = Math.trunc(num(raw.version, 0, 0));
+  const settings = mergeSettings(raw.settings, base.settings);
+  // Version 2: nothing in a version-1 save could turn the bar or the
+  // percentage on — an early build did, by default — so both go back to the
+  // game's default, off. From version 2 they are the player's own choice.
+  if (version < 2) {
+    settings.showProgressBar = base.settings.showProgressBar;
+    settings.showPercentage = base.settings.showPercentage;
+  }
   const player = isObject(raw.player) ? raw.player : {};
   const icons = isObject(player.icons) ? player.icons : {};
   const levels: Record<string, LevelProgress> = {};
@@ -168,7 +177,7 @@ export function migrate(raw: unknown): SaveV1 {
   }
   const totals = isObject(raw.totals) ? raw.totals : {};
   return {
-    version: 1,
+    version: 2,
     createdAt: typeof raw.createdAt === "string" ? raw.createdAt : base.createdAt,
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : base.updatedAt,
     levels,
@@ -180,7 +189,7 @@ export function migrate(raw: unknown): SaveV1 {
       colour2: Math.trunc(num(player.colour2, base.player.colour2, 0)),
       glow: bool(player.glow, base.player.glow),
     },
-    settings: mergeSettings(raw.settings, base.settings),
+    settings,
     totals: {
       jumps: Math.max(0, Math.trunc(num(totals.jumps, 0, 0))),
       // A save from before the flag was kept already shows such a death in a

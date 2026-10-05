@@ -41,7 +41,7 @@ function saved(store: Memory): SaveV1 {
 
 test("nothing stored is a fresh save, not an error", () => {
   const store = new SaveStore(new Memory());
-  assert.equal(store.get().version, 1);
+  assert.equal(store.get().version, 2);
   assert.deepEqual(store.get().levels, {});
 });
 
@@ -49,13 +49,13 @@ test("garbage in storage starts fresh and keeps the unreadable text aside", () =
   const memory = new Memory();
   memory.setItem(SAVE_KEY, "{not json at all");
   const store = new SaveStore(memory);
-  assert.equal(store.get().version, 1);
+  assert.equal(store.get().version, 2);
   assert.equal(memory.getItem(`${SAVE_KEY}:unreadable`), "{not json at all");
 });
 
 test("a storage that throws on every call still gives a working save", () => {
   const store = new SaveStore(new Hostile());
-  assert.equal(store.get().version, 1);
+  assert.equal(store.get().version, 2);
   store.set((s) => {
     s.settings.musicVolume = 0.5;
   });
@@ -66,7 +66,7 @@ test("a storage that throws on every call still gives a working save", () => {
 test("migrate survives everything that is not an object", () => {
   for (const bad of [null, undefined, 0, "", "text", [], true]) {
     const out = migrate(bad);
-    assert.equal(out.version, 1, `${JSON.stringify(bad)} did not migrate`);
+    assert.equal(out.version, 2, `${JSON.stringify(bad)} did not migrate`);
     assert.ok(out.settings, "and has settings");
   }
 });
@@ -104,7 +104,7 @@ test("a NaN or out-of-range percentage is clamped rather than stored", () => {
 
 test("a save from a version that does not exist keeps what this one understands", () => {
   const out = migrate({ version: 99, levels: { "5": { best: 30 } }, somethingNew: { a: 1 } });
-  assert.equal(out.version, 1);
+  assert.equal(out.version, 2);
   assert.equal(out.levels["5"].best, 30);
   assert.ok(!("somethingNew" in out), "unknown keys are dropped rather than carried");
 });
@@ -472,7 +472,14 @@ test("a fresh save hides the percentage and the progress bar", () => {
   // [gdp GameManager::firstLoad :114397-114426: +668 = 0, gv 0040 never set]
   assert.equal(defaultSettings().showPercentage, false);
   assert.equal(defaultSettings().showProgressBar, false);
-  const out = migrate({ version: 1, settings: { showPercentage: true } });
-  assert.equal(out.settings.showPercentage, true, "a stored choice is kept");
-  assert.equal(out.settings.showProgressBar, false);
+  // Nothing in a version-1 save could turn them on but an early build's default.
+  const old = migrate({ version: 1, settings: { showPercentage: true, showProgressBar: true, autoRetry: false } });
+  assert.equal(old.settings.showPercentage, false, "an early build's default goes");
+  assert.equal(old.settings.showProgressBar, false);
+  assert.equal(old.settings.autoRetry, false, "the other settings stay");
+  assert.equal(old.version, 2);
+  const chosen = migrate({ version: 2, settings: { showPercentage: true, showProgressBar: true } });
+  assert.equal(chosen.settings.showPercentage, true, "a version-2 choice is kept");
+  assert.equal(chosen.settings.showProgressBar, true);
+  assert.deepEqual(migrate(JSON.parse(JSON.stringify(chosen))).settings, chosen.settings, "and survives another load");
 });

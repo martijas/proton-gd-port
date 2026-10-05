@@ -492,7 +492,8 @@ export class PauseScreen implements Screen {
       return true;
     }
     if (id === "settings") {
-      void import("./settings").then(({ OptionsScreen }) => this.game.stack.push(new OptionsScreen(this.game)));
+      // The level's own options, not the main Options pages. [gdp PauseLayer::onSettings :235188]
+      void import("./settings").then(({ GameOptionsScreen }) => this.game.stack.push(new GameOptionsScreen(this.game)));
       return true;
     }
     if (id === "quit") {
