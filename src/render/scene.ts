@@ -620,7 +620,7 @@ export class Scene {
         band.track({ x: 0, y: 0, laying: false, reversed: false }, seconds, view, 1, additive, own);
       }
       const ghost: GhostPlayer | null = p && visual.ghostTrail
-        ? { x: p.x, y: p.y, rotation: p.rotation, mode: p.mode, scale: p.mini ? MINI_SCALE : 1, dead: p.dead, icon: own, strong: playerChannelColours(own, other).p1 }
+        ? { x: p.x, y: p.y, rotation: p.rotated ? p.rotation - 90 : p.rotation, mode: p.mode, scale: p.mini ? MINI_SCALE : 1, dead: p.dead, icon: own, strong: playerChannelColours(own, other).p1 }
         : null;
       this.ghosts.step(i as 0 | 1, visual.ghostTrail, ghost, 1 / TICK_RATE, seconds, this.player);
     }

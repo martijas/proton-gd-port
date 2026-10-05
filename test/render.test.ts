@@ -966,6 +966,20 @@ test("the dust and the puff start in colour 1, the dash spray runs from colour 2
   assert.deepEqual(dash.endColor, [0, 0.4, 1, 0.5]);
 });
 
+test("in rotated gameplay the dust comes off the wall the player runs on and falls back to it", { skip: NO_PARTICLES }, () => {
+  // [PlayerObject::updatePlayerArt :145447-145491]
+  const p = new PlayerParticles();
+  p.load(particleFile(), SQUARE);
+  const running = playerAt({ onGround: true, rotated: true, x: 300, y: 300 });
+  for (let i = 0; i < 30; i++) p.update(running, 1 / 60, false);
+  const drag = (p as unknown as { slots: Array<{ emitter: { def: { gravityX: number; gravityY: number; angle: number }; x: number; y: number } }> }).slots[0];
+  assert.ok(drag.emitter.def.gravityX < 0 && drag.emitter.def.gravityY === 0, `gravity ${drag.emitter.def.gravityX}, ${drag.emitter.def.gravityY}`);
+  assert.ok(drag.emitter.x < 300, "the floor is the wall on the left");
+  assert.ok(drag.emitter.y < 300, "and behind is below");
+  p.update(playerAt({ onGround: true }), 1 / 60, false);
+  assert.ok(drag.emitter.def.gravityX === 0 && drag.emitter.def.gravityY < 0, "turned back, it falls down again");
+});
+
 test("landing lets off a puff", { skip: NO_PARTICLES }, () => {
   const p = new PlayerParticles();
   p.load(particleFile(), SQUARE);

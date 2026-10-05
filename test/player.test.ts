@@ -180,6 +180,25 @@ test("a ship carries a cube, and it sits above the hull", { skip: SKIP }, () => 
   assert.ok(highest - lowest > 5, `the rider should sit clear of the hull, got ${highest - lowest}`);
 });
 
+test("rotated gameplay turns the art a quarter anticlockwise, and turns the robot over onto the wall", { skip: SKIP }, () => {
+  // [PlayerObject::updatePlayerArt :145438-145452]
+  const p = renderer(loadIcons());
+  const colour = { r: 255, g: 255, b: 255 };
+  const turn = (i: number): number => (((-Math.atan2(p.data[i * INSTANCE_FLOATS + 1], p.data[i * INSTANCE_FLOATS]) * 180) / Math.PI) % 360 + 360) % 360;
+  const det = (): number => p.data[0] * p.data[3] - p.data[1] * p.data[2];
+  withPages(p, "cube");
+  p.build(playerAt("cube", { rotated: true }), colour, colour, 0);
+  assert.ok(Math.abs(turn(0) - 270) < 1e-6, `a rotated cube is turned ${turn(0)}`);
+  assert.ok(det() > 0, "a cube is turned, not turned over");
+  withPages(p, "ship");
+  p.build(playerAt("ship", { rotated: true }), colour, colour, 0);
+  assert.ok(det() < 0, "the ship is turned over as well");
+  p.build(playerAt("ship", { rotated: true, flipped: true }), colour, colour, 0);
+  assert.ok(det() > 0, "and upside down that undoes the gravity's own turn over");
+  p.build(playerAt("ship"), colour, colour, 0);
+  assert.ok(det() > 0 && Math.abs(turn(0)) < 1e-6, "unrotated, nothing changes");
+});
+
 const atlasPath = builtPath("assets/atlas/uhd.json");
 const ATLAS_SKIP = SKIP || (existsSync(atlasPath) ? false : "run `npm run build` first");
 

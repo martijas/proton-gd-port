@@ -192,6 +192,7 @@ interface Slot {
    */
   over: boolean;
   /** The plist's own gravity and emission angle, before the player's are applied. */
+  driftsAt: number;
   fallsAt: number;
   aimedAt: number;
   /** Whether it should be emitting right now, given the player's state. */
@@ -209,6 +210,7 @@ export class PlayerParticles {
   private tinted: { p1: Rgb; p2: Rgb } | null = null;
   private wasOnGround = false;
   private wasFlipped = false;
+  private wasRotated = false;
   private landFor = 0;
   private quad: BakedQuad | null = null;
   private count = 0;
@@ -223,15 +225,18 @@ export class PlayerParticles {
       return effect ? new ParticleEmitter(defFromPlist(effect), 0, 0, index) : null;
     };
     // The offset turns over with the player, feet included: a child node of a
-    // flipped player is flipped with it.
+    // flipped player is flipped with it. In rotated gameplay the game trades
+    // the two halves, so the floor is a wall and forward is up.
+    // [gdp updatePlayerArt :145483-145491]
     const at = (from: (state: PlayerState) => number, behind = false) =>
-      (state: PlayerState, flipped: boolean): { x: number; y: number } => ({
+      (state: PlayerState, flipped: boolean): { x: number; y: number } => {
         // Behind means behind the way it is going, so a reverse portal moves
         // the dust to the other side of the player rather than leaving it
         // streaming out in front.
-        x: state.x - (behind ? facingOf(state) * halfSizeOf(state) : 0),
-        y: state.y + (flipped ? -from(state) : from(state)),
-      });
+        const forward = behind ? -facingOf(state) * halfSizeOf(state) : 0;
+        const up = flipped ? -from(state) : from(state);
+        return state.rotated ? { x: state.x + up, y: state.y + forward } : { x: state.x + forward, y: state.y + up };
+      };
     const justBehindAndAboveFeet = at((state) => -(halfSizeOf(state) - DRAG_ABOVE_FEET), true);
     const feet = at((state) => -halfSizeOf(state));
     const body = at(() => 0);
@@ -291,7 +296,9 @@ export class PlayerParticles {
     this.landFor = 0;
     this.count = 0;
     this.under = 0;
+    this.wasRotated = false;
     for (const slot of this.slots) {
+      slot.emitter.def.gravityX = slot.driftsAt;
       slot.emitter.def.gravityY = slot.fallsAt;
       slot.emitter.def.angle = slot.aimedAt;
     }
@@ -326,13 +333,20 @@ export class PlayerParticles {
     // frame. Both halves turn over together: upside down the dust is thrown
     // away from the ceiling the player is standing on and falls back toward
     // it, which is the same picture as upright.
+    // In rotated gameplay both turn a quarter clockwise with the floor: the
+    // gravity's halves are traded and the angle is 0, or 180 upside down.
     // [gdp updatePlayerArt, gd-ida-decomp.cpp:145477-145482 — CCPoint(0, -300 *
-    //  flipMod) for the gravity, and :145463-145473 for the angle]
-    if (flipped !== this.wasFlipped) {
+    //  flipMod) for the gravity, traded when rotated, and :145447-145473 for
+    //  the angle]
+    if (flipped !== this.wasFlipped || state.rotated !== this.wasRotated) {
       this.wasFlipped = flipped;
+      this.wasRotated = state.rotated;
       for (const slot of this.slots) {
-        slot.emitter.def.gravityY = flipped ? -slot.fallsAt : slot.fallsAt;
-        slot.emitter.def.angle = flipped ? -slot.aimedAt : slot.aimedAt;
+        const fall = flipped ? -slot.fallsAt : slot.fallsAt;
+        const aim = flipped ? -slot.aimedAt : slot.aimedAt;
+        slot.emitter.def.gravityX = state.rotated ? fall : slot.driftsAt;
+        slot.emitter.def.gravityY = state.rotated ? 0 : fall;
+        slot.emitter.def.angle = state.rotated ? aim - 90 : aim;
       }
     }
 
@@ -386,5 +400,5 @@ function wrap(
   offset: Slot["offset"],
   over: boolean,
 ): Slot | null {
-  return emitter ? { emitter, over, fallsAt: emitter.def.gravityY, aimedAt: emitter.def.angle, on, offset } : null;
+  return emitter ? { emitter, over, driftsAt: emitter.def.gravityX, fallsAt: emitter.def.gravityY, aimedAt: emitter.def.angle, on, offset } : null;
 }

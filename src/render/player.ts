@@ -97,6 +97,24 @@ export const DEFAULT_ICONS: IconChoice = {
  */
 const DARK_SUM = 100;
 
+/** The modes whose art does not turn over again in rotated gameplay. [gdp updatePlayerArt :145434-145437] */
+const UPRIGHT_WHEN_ROTATED: ReadonlySet<GameMode> = new Set<GameMode>(["cube", "ball", "swing"]);
+
+/**
+ * The player's art layer (+1164) inside the player: `sx` by `sy` as the port
+ * has always drawn it, and in rotated gameplay turned 90° anticlockwise —
+ * the ship, UFO, wave, robot and spider also turned over, so their feet stay
+ * on the floor that is now a wall. Everything the player draws — the icon,
+ * the vehicle, the limbs and the dash's flame — is in it.
+ * [gdp PlayerObject::updatePlayerArt :145438-145452 (scale y −1 in rotated
+ *  gameplay outside the cube, ball and swing; rotation −90); the flame's
+ *  container goes into it at init :162525-162527]
+ */
+export function artLayer(mode: GameMode, rotated: boolean, sx: number, sy: number): Affine {
+  if (!rotated) return affine(0, 0, 0, sx, sy);
+  return affine(0, 0, -90, sx, UPRIGHT_WHEN_ROTATED.has(mode) ? sy : -sy);
+}
+
 /**
  * The dash's flame, by mode: where updateDashArt puts it in the player and
  * the scale it leaves it at. The cube, ship and UFO set one scale whose y
@@ -231,12 +249,9 @@ export class PlayerRenderer {
     const icons = this.icons;
     if (!icons || state.dead) return 0;
     const scale = state.mini ? MINI_SCALE : 1;
-    const body = affine(
-      state.x,
-      state.y,
-      state.rotation,
-      scale * (state.mirrored ? -1 : 1),
-      scale * (state.flipped ? -1 : 1),
+    const body = compose(
+      affine(state.x, state.y, state.rotation, 1, 1),
+      artLayer(state.mode, state.rotated, scale * (state.mirrored ? -1 : 1), scale * (state.flipped ? -1 : 1)),
     );
     const glow = this.glow || p1.r + p1.g + p1.b < DARK_SUM;
     // The outline wears the strengthened colour 2, worked out from the icon's
