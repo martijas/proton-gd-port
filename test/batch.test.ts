@@ -30,7 +30,7 @@ import {
   type ZRuns,
 } from "../src/render/batchNodes";
 import { OFFICIAL_LEVELS } from "../src/assets/levels";
-import { BLEND, INSTANCE_BYTES, INSTANCE_FLOATS } from "../src/engine/gl/spriteBatch";
+import { BLEND, INSTANCE_BYTES, INSTANCE_FLOATS, SHAPE } from "../src/engine/gl/spriteBatch";
 import type { TriggerRuntime } from "../src/triggers/runtime";
 import { LAYER_Z, OBJECT_Z } from "../src/triggers/shaderState";
 import { makeHeader } from "./levelKit";
@@ -633,4 +633,85 @@ test("the shipped table gathers every object that carries a system of its own, s
   list.visible({ x0: -500, y0: -300, x1: 500, y1: 300 }, live(table), 0);
   const dark = ids.filter((_, o) => !(list.objectFade(o) > 0));
   assert.deepEqual(dark, [], "types whose system would never start");
+});
+
+// --- cut sprites ------------------------------------------------------------------------
+
+/** Each drawn instance's corners in the world with the frame coordinate the shader gives each. */
+function corners(list: DrawList): { shape: number; points: { x: number; y: number; u: number; v: number }[] }[] {
+  const data = list.visible(VIEW, null, 0);
+  const bytes = new Uint8Array(data.buffer);
+  const out: { shape: number; points: { x: number; y: number; u: number; v: number }[] }[] = [];
+  for (let i = 0; i < list.visibleCount; i++) {
+    const f = i * INSTANCE_FLOATS;
+    const [xa, xb, xc, xd, px, py, u0, v0, du, dv] = data.subarray(f, f + 10);
+    const turned = (bytes[i * INSTANCE_BYTES + 45] & 1) === 1;
+    const shape = bytes[i * INSTANCE_BYTES + 47];
+    const ids = shape === SHAPE.TRIANGLE ? [0, 1, 2] : [0, 1, 2, 3];
+    const points = ids.map((id) => {
+      const cx = id & 1;
+      const cy = id >> 1;
+      const ux = cx * 2 - 1;
+      const uy = 1 - cy * 2;
+      const [tx, ty] = turned ? [cy, cx] : [cx, cy];
+      return { x: xa * ux + xc * uy + px, y: xb * ux + xd * uy + py, u: u0 + tx * du, v: v0 + ty * dv };
+    });
+    out.push({ shape, points });
+  }
+  return out;
+}
+
+test("a cut sprite is drawn as the part of it under the line between its lowered corners, its art cropped not squashed", () => {
+  // CCSprite +476 and +480 lower the top-left and top-right corners by that
+  // share of the height and move the texture coordinate with them.
+  // [setTextureCoords :862782-862827; updateTransform :864326-864367]
+  const table = ColorTable.resolve(makeHeader());
+  const whole = corners(build([object(1, 0)], { 1: record() }, table))[0].points;
+  const uAt = (x: number): number => whole[0].u + ((x - whole[0].x) / (whole[1].x - whole[0].x)) * (whole[1].u - whole[0].u);
+  const vAt = (y: number): number => whole[0].v + ((y - whole[0].y) / (whole[2].y - whole[0].y)) * (whole[2].v - whole[0].v);
+  for (const cut of [[1, 0.5], [0.5, 0], [0, 0.5], [0.5, 1], [0.6, 0], [0.3, 0.3], [0, 0]] as [number, number][]) {
+    const child: ChildRecord = { f: "a.png", dx: 0, dy: 0, z: 0, cut };
+    const pieces = corners(build([object(1, 0)], { 1: record({ dd: 1, ch: [child] }) }, table));
+    const line = (x: number): number => 15 - 30 * (cut[0] + ((cut[1] - cut[0]) * (x + 15)) / 30);
+    let area = 0;
+    for (const p of pieces) {
+      for (const q of p.points) {
+        assert.ok(q.y <= line(q.x) + 1e-4, `cut ${cut}: (${q.x}, ${q.y}) is above the cut`);
+        assert.ok(Math.abs(q.u - uAt(q.x)) < 1e-5 && Math.abs(q.v - vAt(q.y)) < 1e-5, `cut ${cut}: the frame follows the corner`);
+      }
+      const [a, b, c] = p.points;
+      const twice = Math.abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y));
+      area += p.shape === SHAPE.TRIANGLE ? twice / 2 : twice;
+    }
+    // Under a straight line across a 30 × 30 sprite.
+    const want = 30 * (30 - 30 * (cut[0] + cut[1]) / 2);
+    assert.ok(Math.abs(area - want) < 1e-3, `cut ${cut}: area ${area}, want ${want}`);
+  }
+  const fullyCut = corners(build([object(1, 0)], { 1: record({ cut: [1, 1] }) }, table));
+  assert.equal(fullyCut.length, 0, "cut to its foot, nothing is left");
+});
+
+test("the shipped table cuts the block sets' slope tiles and turns the slopes' edge bars as the game does", { skip: ASSETS_SKIP }, () => {
+  const file = JSON.parse(readFileSync(`${ASSETS}/objects.json`, "utf8")) as ObjectsFile;
+  const rec = (id: number): ObjectRecord => file.objects[String(id)];
+  // Fingerdash's rock slope: two tiles cut into one slope, the colour tile
+  // over the right half cut a little shallower. [setupCustomSprites LABEL_1141
+  //  :609625-609741]
+  const rock = rec(1796).ch ?? [];
+  assert.deepEqual(rock.filter((c) => c.ct === "B").map((c) => [c.dx, c.cut]), [[-15, [1, 0.5]], [15, [0.5, 0]]]);
+  assert.deepEqual(rock.find((c) => c.dd)?.ch?.map((c) => [c.dx, c.cut]), [[15, [0.5, 0.2]]]);
+  // Its mirror cuts the other way. [the case 0x710 path, v124 = 1]
+  assert.deepEqual(rec(1808).ch?.filter((c) => c.ct === "B").map((c) => c.cut), [[0, 0.5], [0.6, 1]]);
+  assert.deepEqual(rec(1795).cut, [1, 0], "a tile of its own, cut corner to corner");
+  // The plain outlines draw only the bar turned onto the diagonal, and its
+  // glow; the triangles keep their fill and gain the bar's glow.
+  // [addNewSlope01/02 and their Glow twins :174279-174411]
+  for (const [id, frame, rot] of [[1338, "blockOutline_14new_001.png", -45], [1339, "blockOutline_15new_001.png", -26.5]] as const) {
+    const bar = rec(id).ch?.find((c) => c.f === frame);
+    assert.equal(rec(id).dd, 1, `${id} hides its own outline`);
+    assert.equal(rec(id).g, undefined, `${id} hides its own glow`);
+    assert.deepEqual([bar?.rot, bar?.z, bar?.g], [rot, 2, frame.replace("_001", "_glow_001")]);
+  }
+  assert.equal(rec(1744).dd, undefined);
+  assert.equal(rec(1744).ch?.[0].g, "blockOutline_15new_glow_001.png");
 });

@@ -57,8 +57,22 @@ export interface ChildRecord {
    * scale. [setupCustomSprites, e.g. :612779-612787, :610199-610215]
    */
   dd?: 1;
+  /** How far its top corners are lowered (Cut). */
+  cut?: Cut;
   ch?: ChildRecord[];
 }
+
+/**
+ * How far a sprite's top-left and top-right corners are lowered, each as a
+ * share of its height, with the texture cropped to match rather than
+ * squashed: the sprite is cut along the line between the two. A share below
+ * zero raises the corner without the texture following, so the art stretches.
+ * The slope pieces of the block sets cut two square tiles into a slope this
+ * way. [CCSprite +476, +480: setTextureCoords :862782-862827, updateTransform
+ *  :864326-864367; set in setupCustomSprites :609173-609784, traced by
+ *  tools/ref-trace-ida-trims.py]
+ */
+export type Cut = [number, number];
 
 /**
  * The z layers the game gives an object, back to front. The editor names them
@@ -120,6 +134,8 @@ export interface ObjectRecord {
    * its children and its glow show. [ChildRecord.dd]
    */
   dd?: 1;
+  /** How far its own sprite's top corners are lowered (Cut). */
+  cut?: Cut;
   ch?: ChildRecord[];
   // Frame animations are not carried here: the renderer reads the game's own
   // table, assets/gameAnimations.ts.

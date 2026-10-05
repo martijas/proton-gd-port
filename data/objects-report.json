@@ -1,11 +1,11 @@
 {
- "generated": "2026-10-03T18:26:53.206Z",
+ "generated": "2026-10-05T21:37:11.762Z",
  "validatedAgainst": "uhd",
  "totals": {
   "ids": 4085,
   "census": 1367,
   "withFrame": 4079,
-  "withGlow": 257,
+  "withGlow": 255,
   "withChildren": 2615,
   "children": 3396,
   "withAnim": 124

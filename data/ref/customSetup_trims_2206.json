@@ -1,0 +1,910 @@
+{
+"1769": {
+"main": [
+1.0,
+0
+]
+},
+"1770": {
+"main": [
+0,
+1.0
+]
+},
+"1771": {
+"main": [
+0,
+1.0
+]
+},
+"1772": {
+"main": [
+1.0,
+0
+]
+},
+"1773": {
+"sprites": [
+{
+"call": "addCustomChild",
+"f": "block013_01c_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+1.0,
+0.5
+]
+},
+{
+"call": "addCustomChild",
+"f": "block013_02c_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+0
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block013_02c_color_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.45,
+0
+]
+}
+]
+},
+"1774": {
+"sprites": [
+{
+"call": "addCustomChild",
+"f": "block013_03c_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+1.0,
+0.5
+]
+},
+{
+"call": "addCustomChild",
+"f": "block013_04c_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+0
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block013_04c_color_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.3,
+0
+]
+}
+]
+},
+"1775": {
+"sprites": [
+{
+"call": "addCustomChild",
+"f": "block013_01c_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+0,
+0.5
+]
+},
+{
+"call": "addCustomChild",
+"f": "block013_02c_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+1.0
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block013_01c_color_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+0,
+0.5
+]
+}
+]
+},
+"1776": {
+"sprites": [
+{
+"call": "addCustomChild",
+"f": "block013_03c_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+0,
+0.5
+]
+},
+{
+"call": "addCustomChild",
+"f": "block013_04c_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+1.0
+]
+}
+]
+},
+"1777": {
+"main": [
+0,
+0.95
+]
+},
+"1778": {
+"main": [
+0.85,
+0
+]
+},
+"1779": {
+"main": [
+1.0,
+-0.15
+]
+},
+"1780": {
+"main": [
+0.05,
+1.0
+]
+},
+"1781": {
+"main": [
+0,
+1.0
+],
+"colour": [
+0,
+1.0
+]
+},
+"1782": {
+"main": [
+1.0,
+0
+],
+"colour": [
+1.0,
+0
+]
+},
+"1783": {
+"main": [
+1.0,
+0
+],
+"colour": [
+1.0,
+0
+]
+},
+"1784": {
+"main": [
+0,
+1.0
+],
+"colour": [
+0,
+1.0
+]
+},
+"1785": {
+"sprites": [
+{
+"call": "addCustomChild",
+"f": "block011_01_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+0.9,
+0.45
+]
+},
+{
+"call": "addCustomChild",
+"f": "block011_02_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.45,
+0
+]
+}
+]
+},
+"1786": {
+"sprites": [
+{
+"call": "addCustomChild",
+"f": "block011_03_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+1.0,
+0.5
+]
+},
+{
+"call": "addCustomChild",
+"f": "block011_04_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.6,
+0.1
+]
+}
+]
+},
+"1787": {
+"sprites": [
+{
+"call": "addCustomChild",
+"f": "block011_01_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+0.05,
+0.5
+]
+},
+{
+"call": "addCustomChild",
+"f": "block011_02_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+0.9
+]
+}
+]
+},
+"1788": {
+"sprites": [
+{
+"call": "addCustomChild",
+"f": "block011_03_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+0,
+0.4
+]
+},
+{
+"call": "addCustomChild",
+"f": "block011_04_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+1.0
+]
+}
+]
+},
+"1789": {
+"sprites": [
+{
+"call": "addCustomChild",
+"f": "block011b_01_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+1.0,
+0.5
+]
+},
+{
+"call": "addCustomChild",
+"f": "block011b_02_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+0
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block011b_02_color_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+0.1
+]
+}
+]
+},
+"1790": {
+"sprites": [
+{
+"call": "addCustomChild",
+"f": "block011b_03_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+1.0,
+0.5
+]
+},
+{
+"call": "addCustomChild",
+"f": "block011b_04_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+0
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block011b_03_color_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+1.0,
+0.5
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block011b_04_color_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+0.2
+]
+}
+]
+},
+"1791": {
+"sprites": [
+{
+"call": "addCustomChild",
+"f": "block011b_01_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+0,
+0.5
+]
+},
+{
+"call": "addCustomChild",
+"f": "block011b_02_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+1.0
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block011b_01_color_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+0.1,
+0.5
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block011b_02_color_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+1.0
+]
+}
+]
+},
+"1792": {
+"sprites": [
+{
+"call": "addCustomChild",
+"f": "block011b_03_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+0,
+0.5
+]
+},
+{
+"call": "addCustomChild",
+"f": "block011b_04_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+1.0
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block011b_03_color_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+0.1,
+0.5
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block011b_04_color_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.77,
+1.0
+]
+}
+]
+},
+"1793": {
+"main": [
+1.0,
+0
+],
+"colour": [
+1.0,
+0
+]
+},
+"1794": {
+"sprites": [
+{
+"call": "addCustomChild",
+"f": "block012_03_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+1.0,
+0.5
+]
+},
+{
+"call": "addCustomChild",
+"f": "block012_01_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+0
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block012_03_color_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+1.0,
+0.5
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block012_01_color_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+0.1
+]
+}
+]
+},
+"1795": {
+"main": [
+1.0,
+0
+],
+"colour": [
+1.0,
+0
+]
+},
+"1796": {
+"sprites": [
+{
+"call": "addCustomChild",
+"f": "block012_13_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+1.0,
+0.5
+]
+},
+{
+"call": "addCustomChild",
+"f": "block012_13_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+0
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block012_13_color_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+0.2
+]
+}
+]
+},
+"1797": {
+"main": [
+1.0,
+0
+],
+"colour": [
+1.0,
+0
+]
+},
+"1799": {
+"main": [
+1.0,
+0
+],
+"colour": [
+1.0,
+0
+]
+},
+"1800": {
+"sprites": [
+{
+"call": "addCustomChild",
+"f": "block012b_03_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+1.0,
+0.5
+]
+},
+{
+"call": "addCustomChild",
+"f": "block012b_01_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+0
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block012b_03_color_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+1.0,
+0.5
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block012b_01_color_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+0
+]
+}
+]
+},
+"1801": {
+"main": [
+1.0,
+0
+],
+"colour": [
+1.0,
+0
+]
+},
+"1802": {
+"sprites": [
+{
+"call": "addCustomChild",
+"f": "block012b_13_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+1.0,
+0.5
+]
+},
+{
+"call": "addCustomChild",
+"f": "block012b_13_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+0
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block012b_13_color_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+1.0,
+0.5
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block012b_13_color_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+0
+]
+}
+]
+},
+"1803": {
+"main": [
+0,
+1.0
+],
+"colour": [
+0,
+1.0
+]
+},
+"1804": {
+"sprites": [
+{
+"call": "addCustomChild",
+"f": "block012_01_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+0,
+0.5
+]
+},
+{
+"call": "addCustomChild",
+"f": "block012_03_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+1.0
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block012_01_color_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+0,
+0.5
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block012_03_color_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+1.0
+]
+}
+]
+},
+"1805": {
+"main": [
+0,
+1.0
+],
+"colour": [
+0,
+1.0
+]
+},
+"1806": {
+"sprites": [
+{
+"call": "addCustomChild",
+"f": "block012b_01_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+0,
+0.5
+]
+},
+{
+"call": "addCustomChild",
+"f": "block012b_03_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+1.0
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block012b_01_color_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+0,
+0.5
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block012b_03_color_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+1.0
+]
+}
+]
+},
+"1807": {
+"main": [
+0,
+1.0
+],
+"colour": [
+0.1,
+1.0
+]
+},
+"1808": {
+"sprites": [
+{
+"call": "addCustomChild",
+"f": "block012_13_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+0,
+0.5
+]
+},
+{
+"call": "addCustomChild",
+"f": "block012_14_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.6,
+1.0
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block012_13_color_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+0,
+0.5
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block012_14_color_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.8,
+1.0
+]
+}
+]
+},
+"1809": {
+"main": [
+0,
+1.0
+],
+"colour": [
+0,
+1.0
+]
+},
+"1810": {
+"sprites": [
+{
+"call": "addCustomChild",
+"f": "block012b_13_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+0,
+0.5
+]
+},
+{
+"call": "addCustomChild",
+"f": "block012b_14_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+1.0
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block012b_13_color_001.png",
+"x": -15.0,
+"y": 0.0,
+"cut": [
+0,
+0.5
+]
+},
+{
+"call": "addInternalCustomColorChild",
+"f": "block012b_14_color_001.png",
+"x": 15.0,
+"y": 0.0,
+"cut": [
+0.5,
+1.0
+]
+}
+]
+}
+}

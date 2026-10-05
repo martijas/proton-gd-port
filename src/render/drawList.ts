@@ -43,10 +43,10 @@
 // one its object's halves blend for now, so nothing is sorted again.
 
 import { affine, affineXY, apply, compose, IDENTITY, type Affine } from "../engine/math";
-import { BLEND, INSTANCE_BYTES, INSTANCE_FLOATS } from "../engine/gl/spriteBatch";
+import { BLEND, INSTANCE_BYTES, INSTANCE_FLOATS, SHAPE } from "../engine/gl/spriteBatch";
 import type { AtlasSet } from "../assets/atlas";
 import { frameSourceSize } from "../assets/atlasTypes";
-import type { ChildRecord, ObjectRecord } from "../assets/objectTypes";
+import type { ChildRecord, Cut, ObjectRecord } from "../assets/objectTypes";
 import type { HsvShift, Level, LevelObject } from "../level/types";
 import { OBJECT_KEY, objectFlag, objectInt } from "../level/decode";
 import type { TriggerRuntime } from "../triggers/runtime";
@@ -1503,6 +1503,8 @@ interface Pending {
   black: number;
   /** How the music pulse scales it: a PULSE_* kind, none when unset. */
   pulse?: number;
+  /** What its corners make (SHAPE): a piece of a cut sprite can be a triangle. */
+  shape?: number;
 }
 
 /**
@@ -1763,7 +1765,7 @@ function buildDrawList(
     bytes[o + 44] = p.sheet;
     bytes[o + 45] = p.rotated;
     bytes[o + 46] = p.additive ? BLEND.ADD_SPRITE : BLEND.NORMAL;
-    bytes[o + 47] = 0;
+    bytes[o + 47] = p.shape ?? SHAPE.QUAD;
     meta.object[i] = p.object;
     meta.channel[i] = p.channel;
     meta.mainChannel[i] = p.mainChannel;
@@ -2060,6 +2062,66 @@ function slotOf(record: ObjectRecord, type: ChildRecord["ct"] | undefined): "B" 
 }
 
 /**
+ * A sprite with its top corners lowered (Cut), as the pieces the batcher can
+ * draw: the full-width rectangle under the lower of the two corners, and the
+ * right triangle between that and the cut. The cut crops the texture with
+ * the corners, so each piece is a part of the sprite with its own part of the
+ * frame and the art is not distorted. Each piece is given as where its
+ * corner (0, 0) sits in the sprite's corners, top-left (0, 0) to bottom-right
+ * (1, 1), and how far its corners (1, 0) and (0, 1) reach from there. A share
+ * below zero would raise the corner past the art and stretch it; it is drawn
+ * as none (only 1779, which no official level places).
+ * [CCSprite::setTextureCoords :862782-862827, updateTransform :864326-864367]
+ */
+function cutPieces(cut: Cut): { x: number; y: number; ex: number; ey: number; triangle: boolean }[] {
+  const left = Math.min(1, Math.max(0, cut[0]));
+  const right = Math.min(1, Math.max(0, cut[1]));
+  const low = Math.max(left, right);
+  const pieces: { x: number; y: number; ex: number; ey: number; triangle: boolean }[] = [];
+  if (low < 1) pieces.push({ x: 0, y: low, ex: 1, ey: 1 - low, triangle: false });
+  if (left < right) pieces.push({ x: 0, y: right, ex: 1, ey: left - right, triangle: true });
+  else if (right < left) pieces.push({ x: 1, y: left, ex: -1, ey: right - left, triangle: true });
+  return pieces;
+}
+
+/**
+ * One piece of a baked sprite (cutPieces): its half-axes, centre and frame
+ * rectangle narrowed to the piece, and the same for its turning copy. The
+ * frame corner follows the sprite corner, swapped for a frame the packer
+ * turned, as the shader reads it.
+ */
+function cutPiece(p: Pending, piece: { x: number; y: number; ex: number; ey: number; triangle: boolean }): Pending {
+  const sx = 2 * piece.x - 1 + piece.ex;
+  const sy = 1 - 2 * piece.y - piece.ey;
+  const [tx, ty, tex, tey] = p.rotated ? [piece.y, piece.x, piece.ey, piece.ex] : [piece.x, piece.y, piece.ex, piece.ey];
+  let spin: Float32Array | null = null;
+  if (p.spin) {
+    spin = Float32Array.from(p.spin);
+    spin[4] = p.spin[4] + p.spin[0] * sx + p.spin[2] * sy;
+    spin[5] = p.spin[5] + p.spin[1] * sx + p.spin[3] * sy;
+    spin[0] = p.spin[0] * piece.ex;
+    spin[1] = p.spin[1] * piece.ex;
+    spin[2] = p.spin[2] * piece.ey;
+    spin[3] = p.spin[3] * piece.ey;
+  }
+  return {
+    ...p,
+    xa: p.xa * piece.ex,
+    xb: p.xb * piece.ex,
+    xc: p.xc * piece.ey,
+    xd: p.xd * piece.ey,
+    px: p.px + p.xa * sx + p.xc * sy,
+    py: p.py + p.xb * sx + p.xd * sy,
+    u0: p.u0 + tx * p.du,
+    v0: p.v0 + ty * p.dv,
+    du: tex * p.du,
+    dv: tey * p.dv,
+    spin,
+    shape: piece.triangle ? SHAPE.TRIANGLE : SHAPE.QUAD,
+  };
+}
+
+/**
  * The colour sprite among a record's sprites (+187): the top-level sprite the
  * game makes the object's colour sprite and hangs on the object at z 100, or
  * −100 when it goes behind. That is its one top-level sprite in the detail
@@ -2253,6 +2315,7 @@ function emit(
     anim: readonly AnimFrame[] | null = null,
     anchor: ChildAnchor | null = null,
     glow = false,
+    cut: Cut | undefined = undefined,
   ): void => {
     if (!frame) return;
     const found = atlas.frame(frame);
@@ -2295,7 +2358,7 @@ function emit(
         placed.ty,
       );
     }
-    out.push({
+    const entry: Pending = {
       node: current,
       part,
       intra: rank++,
@@ -2330,7 +2393,19 @@ function emit(
       main: slot === "D" ? 0 : 1,
       glow: glow ? 1 : 0,
       black: tone.black ? 1 : 0,
-    });
+    };
+    // An animated sprite's frames replace its geometry each gather, so a cut
+    // would not hold; none of the cut sprites animates.
+    if (!cut || entry.anim) {
+      out.push(entry);
+      return;
+    }
+    const pieces = cutPieces(cut);
+    for (let k = 0; k < pieces.length; k++) {
+      const piece = cutPiece(entry, pieces[k]);
+      if (k > 0) piece.intra = rank++;
+      out.push(piece);
+    }
   };
 
   const objectAlpha = record.a ?? 1;
@@ -2383,7 +2458,7 @@ function emit(
   const rod = ROD_IDS.has(object.id);
   const children = rod ? (record.ch ?? []).filter((c) => !c.f?.startsWith("rod_ball_")) : (record.ch ?? []);
   tree(children, IDENTITY, objectAlpha, PART_MAIN, () => {
-    if (!record.dd) push(mainFrame, mainSlot, objectAlpha, record.bl === 1, IDENTITY, PART_MAIN, mainFrames);
+    if (!record.dd) push(mainFrame, mainSlot, objectAlpha, record.bl === 1, IDENTITY, PART_MAIN, mainFrames, null, false, record.cut);
   });
   // The glow goes in its layer's glow batch and always adds rather than covers.
   if (glows) push(record.g, mainSlot, objectAlpha, true, IDENTITY, PART_GLOW, null, null, true);
@@ -2659,7 +2734,7 @@ function emit(
     tree(c.ch ?? [], local, childAlpha, own, () => {
       if (c.dd) return;
       const frames = animation && c.f ? animation.framesFor(c.f, slot === "D") : null;
-      push(c.f, slot, childAlpha, c.bl === 1, local, own, frames, anchor);
+      push(c.f, slot, childAlpha, c.bl === 1, local, own, frames, anchor, false, c.cut);
     });
     if (glows && c.g) push(c.g, slot, childAlpha, true, local, PART_GLOW, null, anchor, true);
   }

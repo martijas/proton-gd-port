@@ -96,9 +96,9 @@ def tokenize(text):
         m = re.compile(r'do\b').match(text, i)
         if m:
             out.append(('LOOP', 'do')); i = m.end(); continue
-        m = re.compile(r'case (-?\d+):').match(text, i)
+        m = re.compile(r'case (-?(?:0x[0-9A-Fa-f]+|\d+))u?:').match(text, i)
         if m:
-            out.append(('CASE', int(m.group(1)))); i = m.end(); continue
+            out.append(('CASE', int(m.group(1), 0))); i = m.end(); continue
         m = re.compile(r'default:').match(text, i)
         if m:
             out.append(('CASE', None)); i = m.end(); continue
@@ -314,10 +314,9 @@ def run(tree, paths, oid, record, unsigned, hook=None):
             try:
                 block(path[-1][0], path[-1][1])
             except Break:
-                # out of the innermost switch on the path
+                # out of the innermost switch on the path, on to what follows it
                 while level > 0 and path[level - 1][0][path[level - 1][1]][0] != 'switch':
                     level -= 1
-                level -= 1
             for (outer, i) in reversed(path[:level]):
                 block(outer, i + 1)
             return

@@ -27,7 +27,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { BuiltInParticle, ChildRecord, ColorType, ObjectRecord, ObjectsFile, Provenance } from "../../src/assets/objectTypes";
+import type { BuiltInParticle, ChildRecord, ColorType, Cut, ObjectRecord, ObjectsFile, Provenance } from "../../src/assets/objectTypes";
 import { isZLayer } from "../../src/assets/objectTypes";
 import type { BootstrapEntry, BootstrapJson } from "../../src/physics/objects";
 import { buildObjectTable } from "../../src/physics/objects";
@@ -335,6 +335,52 @@ function mergeZ(rec: ObjectRecord, id: number, e: BootstrapEntry | undefined, g:
  *  traced for every id; PlayLayer::addObject :90320-90350]
  */
 const NO_CHILD_SPRITE_IDS: ReadonlySet<number> = new Set([50, 51, 52, 53, 54, 60, 148, 149, 405]);
+
+/**
+ * The slopes whose edge is a straight bar turned onto the diagonal:
+ * addNewSlope01 hangs blockOutline_14new at the centre at z 2 turned −45°,
+ * addNewSlope02 blockOutline_15new turned −26.5°, and their glow twins hang
+ * the bar's glow, turned the same, on the object's glow sprite. The plain
+ * outlines (1338, 1339) pass 1, which hides the object's own sprite and its
+ * glow, so the bar is the whole edge; the triangles (1743-1750) pass 0 and
+ * keep their fill, with an empty glow under the bar's (+549, the editor
+ * flag, is 0 in play). The tables had the bar unturned on 1338 and 1339 —
+ * across every plain slope, or upright through one turned a quarter — and
+ * no bar glow anywhere.
+ * [addNewSlope01 :174279-174293, addNewSlope01Glow :174309-174337,
+ *  addNewSlope02 :174353-174367, addNewSlope02Glow :174383-174411 (the turns
+ *  are the float bits −1036779520 and −1043070976); setupCustomSprites
+ *  :608483-608486, :608521-608524 (1338, 1339), :609068-609092 (1743-1750);
+ *  addEmptyGlow :166172-166189]
+ */
+interface SlopeOutline {
+  bar: string;
+  rot: number;
+  hidesOwn: boolean;
+}
+const NEW_SLOPE_OUTLINES: ReadonlyMap<number, SlopeOutline> = new Map<number, SlopeOutline>([
+  [1338, { bar: "blockOutline_14new_001.png", rot: -45, hidesOwn: true }],
+  [1339, { bar: "blockOutline_15new_001.png", rot: -26.5, hidesOwn: true }],
+  ...[1743, 1745, 1747, 1749].map((id): [number, SlopeOutline] => [id, { bar: "blockOutline_14new_001.png", rot: -45, hidesOwn: false }]),
+  ...[1744, 1746, 1748, 1750].map((id): [number, SlopeOutline] => [id, { bar: "blockOutline_15new_001.png", rot: -26.5, hidesOwn: false }]),
+]);
+
+/** Puts a slope's edge bar as addNewSlope01/02 hang it (NEW_SLOPE_OUTLINES). Returns whether the record had the bar. */
+function newSlopeOutline(rec: ObjectRecord, id: number, check: FrameChecker): boolean {
+  const edge = NEW_SLOPE_OUTLINES.get(id);
+  if (!edge) return true;
+  const bar = (rec.ch ?? []).find((c) => c.f === edge.bar && c.dx === 0 && c.dy === 0);
+  if (!bar) return false;
+  bar.rot = edge.rot;
+  bar.z = 2;
+  const glow = check.keep(edge.bar.replace(/_001\.png$/, "_glow_001.png"), check.droppedGlow);
+  if (glow) bar.g = glow;
+  if (edge.hidesOwn) {
+    rec.dd = 1;
+    delete rec.g;
+  }
+  return true;
+}
 
 /** The three radial glows, whose quadrants are added together. */
 const RADIAL_GLOW_IDS: ReadonlySet<number> = new Set([1886, 1887, 1888]);
@@ -646,7 +692,44 @@ function inputPaths(ctx: StepContext): string[] {
     join(ctx.data, "census.json"),
     join(ctx.data, "ref", "customSetup_render_flags_2206.json"),
     join(ctx.data, "ref", "customSetup_particles_2206.json"),
+    join(ctx.data, "ref", "customSetup_trims_2206.json"),
   ];
+}
+
+interface TracedTrims {
+  main?: Cut;
+  colour?: Cut;
+  sprites?: { call: string; f: string | null; x: number | null; y: number | null; cut: Cut }[];
+}
+
+/**
+ * Puts the traced corner trims (tools/ref-trace-ida-trims.py) on the sprites
+ * they were written on: the object's own, its colour sprite (+748, the detail
+ * child at the colour sprite's place), or the child made from that frame at
+ * that offset, wherever it hangs. Returns the traced sprites no child matched.
+ */
+function applyTrims(rec: ObjectRecord, t: TracedTrims): string[] {
+  const missed: string[] = [];
+  if (t.main) rec.cut = t.main;
+  // The colour sprite's trim is only written when it has one (1795 has not).
+  // [setupCustomSprites :609464-609471, :609476-609484; addColorSprite
+  //  :171846-171856]
+  const colour = t.colour ? (rec.ch ?? []).find((c) => c.ct === "D" && Math.abs(c.z) === 100) : undefined;
+  if (colour && t.colour) colour.cut = t.colour;
+  const all: ChildRecord[] = [];
+  const walk = (list: ChildRecord[] | undefined): void => {
+    for (const c of list ?? []) {
+      all.push(c);
+      walk(c.ch);
+    }
+  };
+  walk(rec.ch);
+  for (const s of t.sprites ?? []) {
+    const match = all.find((c) => !c.cut && !c.dd && c.f === s.f && c.dx === s.x && c.dy === s.y);
+    if (match) match.cut = s.cut;
+    else missed.push(`${s.f} at ${s.x}, ${s.y}`);
+  }
+  return missed;
 }
 
 interface TracedParticle {
@@ -752,8 +835,11 @@ export const objectsStep: StepModule = {
   inputs: inputPaths,
 
   run(ctx: StepContext): StepResult {
-    const [bootstrapPath, gdclonePath, customSetupPath, censusPath, flagsPath, particlesPath] = inputPaths(ctx);
+    const [bootstrapPath, gdclonePath, customSetupPath, censusPath, flagsPath, particlesPath, trimsPath] = inputPaths(ctx);
     const hidesMain = readHiddenMain(flagsPath);
+    const trims = JSON.parse(readFileSync(trimsPath, "utf8")) as Record<string, TracedTrims>;
+    const trimsMissed: string[] = [];
+    const slopeBarMissed: number[] = [];
     const particles = readParticles(particlesPath);
     const bootstrap = JSON.parse(readFileSync(bootstrapPath, "utf8")) as BootstrapJson;
     const gdclone = JSON.parse(readFileSync(gdclonePath, "utf8")) as Record<string, GdcloneEntry>;
@@ -797,7 +883,10 @@ export const objectsStep: StepModule = {
         z: override && (override.zl !== undefined || override.zo !== undefined) ? "manual" : zFrom,
       };
       hiddenSprites(rec, id, hiddenUnmatched);
+      if (!newSlopeOutline(rec, id, check)) slopeBarMissed.push(id);
       if (drawnThroughCopy(rec, hidesMain.has(id))) throughCopy++;
+      const trim = trims[String(id)];
+      if (trim) for (const m of applyTrims(rec, trim)) trimsMissed.push(`${id}: ${m}`);
       const particle = particles.get(id);
       if (particle) rec.pt = particle;
       // A missing frame only matters when the object is one the levels use.
@@ -871,6 +960,8 @@ export const objectsStep: StepModule = {
       ctx.log.error(`object ${m.id} (used ${m.uses}×) has no frame: ${m.frame}`);
     }
     ctx.log.note(`${throughCopy} objects draw their frame once, through a copy (drawnThroughCopy)`);
+    if (trimsMissed.length > 0) ctx.log.warn(`traced corner trims with no sprite to go on: ${trimsMissed.join("; ")}`);
+    if (slopeBarMissed.length > 0) ctx.log.warn(`slopes with no edge bar to turn: ${slopeBarMissed.join(", ")}`);
     if (hiddenUnmatched.length > 0) {
       ctx.log.warn(`no single colour sprite to mark don't-draw on ${hiddenUnmatched.join(", ")}`);
     }
