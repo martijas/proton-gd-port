@@ -4,8 +4,7 @@
 # Geometry Dash — ground-up web port
 
 A browser port of Geometry Dash 2.2, written from scratch in TypeScript and
-WebGL2. It ships in [Proton Catalog](https://github.com/martijas), and anyone
-can host their own copy.
+WebGL2. anyone can host their own copy.
 
 The game's art, sound and levels are in `prebuilt/assets/`, already built from
 Geometry Dash 2.2's own files, so hosting it needs nothing but this repository.
