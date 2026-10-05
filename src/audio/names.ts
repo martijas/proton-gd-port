@@ -68,6 +68,8 @@ export const UI_SOUNDS = {
   /** Going back out of one. */
   back: "quitSound_01",
   newBest: "highscoreGet02",
+  /** Orbs paid by a death's new-best pop-up. [gdp PlayLayer::showNewBest :89514] */
+  orbs: "magicExplosion",
   achievement: "achievement_01",
   /** An icon tapped on the main menu, at half volume. [gdp MenuGameLayer::destroyPlayer :237556-237557] */
   menuDeath: "explode_11",

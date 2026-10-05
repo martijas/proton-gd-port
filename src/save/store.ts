@@ -191,6 +191,7 @@ export function migrate(raw: unknown): SaveV1 {
         bool(totals.nearMiss, false) ||
         Object.entries(levels).some(([id, l]) => !TOWER_FLOORS.has(Number(id)) && l.best >= 95 && l.best < 100),
       menuKills: Math.max(0, Math.trunc(num(totals.menuKills, 0, 0))),
+      orbs: Math.trunc(num(totals.orbs, -1, -1)),
       earned: Array.isArray(totals.earned)
         ? [...new Set(totals.earned.filter((id): id is string => typeof id === "string" && /^geometry\.ach\.[\w]+$/.test(id)))].slice(0, 64)
         : [],

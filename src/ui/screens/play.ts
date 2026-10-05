@@ -21,6 +21,7 @@
 import type { Game } from "../../game/game";
 import { FRAMES } from "../art";
 import { clock, label, NO_ART, spriteButton, TRANSPARENT, type ArtLookup } from "../chrome";
+import { NewBestPopup, OrbReward } from "../newBest";
 import { UI_COLOURS } from "../render";
 import type { Screen } from "../screen";
 import { rect, type UiViewport } from "../viewport";
@@ -28,6 +29,8 @@ import { sliderValueAt, type Widget } from "../widgets";
 
 /** How long the death overlay waits before retrying by itself. [meas] */
 const AUTO_RETRY_SECONDS = 1;
+/** A death that shows the new-best pop-up waits at least this long. [gdp PlayLayer::destroyPlayer :93351-93352] */
+const NEW_BEST_RETRY_SECONDS = 1.4;
 
 /** The pause button is drawn faint. [gdp UILayer::init :86322, opacity 75 of 255] */
 const PAUSE_ALPHA = 75 / 255;
@@ -99,6 +102,11 @@ export class PlayScreen implements Screen {
   private deadFor = 0;
   private finished = false;
   private retryShown = false;
+  private retryDelay = AUTO_RETRY_SECONDS;
+  /** The death is waiting for its orbs to land before it starts over. */
+  private orbsPending = false;
+  private popup: NewBestPopup | null = null;
+  private reward: OrbReward | null = null;
   /** Where the attempt label falls in the frame, refilled each build. */
   private readonly labelAt: [number, number] = [0, 0];
 
@@ -108,7 +116,47 @@ export class PlayScreen implements Screen {
     this.game.endLevel();
   }
 
+  /**
+   * Steps the pop-up and the orb counter. They are the level's own layers, so
+   * they carry on through the death screen and into the next attempt, and
+   * stand still while the level is paused.
+   */
+  private tickOverlays(dt: number): void {
+    if (this.game.stack.freezesLevel) return;
+    if (this.popup) {
+      this.popup.update(dt);
+      if (this.popup.done) this.popup = null;
+    }
+    if (this.reward) {
+      this.reward.update(dt);
+      if (this.reward.done) this.reward = null;
+    }
+  }
+
+  /**
+   * A death that beat the best, or paid orbs: the pop-up, and the orbs flying
+   * from it to the counter. When the level starts over by itself and orbs
+   * were paid, it starts over as the last one lands rather than on a timer.
+   * [gdp PlayLayer::showNewBest :88991-89618; currencyWillExit :107335]
+   */
+  private showNewBest(newBest: boolean, percent: number, orbs: number, waitForOrbs: boolean): void {
+    const view = this.game.view;
+    const popup = new NewBestPopup({ newBest, percent, orbs });
+    this.popup = popup;
+    this.orbsPending = waitForOrbs && orbs > 0;
+    if (orbs <= 0) return;
+    this.game.audio.ui("orbs");
+    const art: ArtLookup = this.game.ui?.art ?? NO_ART;
+    const total = this.game.orbTotal();
+    this.reward = new OrbReward(total - orbs, orbs, popup.centre(view.width, view.height), view.width, view.height, art, () => {
+      if (!this.orbsPending) return;
+      this.orbsPending = false;
+      if (this.game.sim?.state.dead && this.game.stack.top === this) this.retry();
+    });
+  }
+
   update(dt: number): void {
+    this.tickOverlays(dt);
     const sim = this.game.sim;
     const run = this.game.run;
     if (!sim || !run) return;
@@ -123,7 +171,9 @@ export class PlayScreen implements Screen {
     if (sim.state.finished && !this.finished) {
       this.finished = true;
       this.game.commitJumps();
+      const before = this.game.runProgress(run).best;
       const improved = this.game.recordRun(run, kept ? 100 : 0, kept ? sim.coinsTaken() : []);
+      if (kept) this.game.awardOrbs(run, before, 100);
       this.game.audio.finishLevel(sim, run.practice);
       this.game.stack.push(new CompleteScreen(this.game, improved));
       return;
@@ -142,12 +192,28 @@ export class PlayScreen implements Screen {
       const percent = wholePercent(sim.progress());
       if (!run.practice) run.lastPercent = percent;
       const keeps = kept && !run.level.header.platformer;
-      this.game.recordRun(run, keeps ? Math.min(99, percent) : 0);
+      const kept99 = keeps ? Math.min(99, percent) : 0;
+      // A new best beats the normal-mode best as it stood; the orbs are paid
+      // for the stretch past it. [gdp PlayLayer::destroyPlayer :93199-93268]
+      const before = this.game.runProgress(run).best;
+      const newBest = keeps && !run.practice && kept99 > before;
+      this.game.recordRun(run, kept99);
+      const orbs = keeps ? this.game.awardOrbs(run, before, kept99) : 0;
       this.game.audio.playerDied(sim, run.practice);
+      // Starting over by itself, the level shows the pop-up for a new best or
+      // for orbs; with the death screen, only for orbs.
+      // [gdp PlayLayer::destroyPlayer :93302-93352]
+      const auto = this.game.save.get().settings.autoRetry;
+      this.retryDelay = AUTO_RETRY_SECONDS;
+      this.orbsPending = false;
+      if (orbs > 0 || (auto && newBest)) {
+        this.showNewBest(newBest, kept99, orbs, auto);
+        if (auto) this.retryDelay = Math.max(this.retryDelay, NEW_BEST_RETRY_SECONDS);
+      }
     }
     this.deadFor += dt;
     if (this.game.save.get().settings.autoRetry) {
-      if (this.deadFor >= AUTO_RETRY_SECONDS) {
+      if (!this.orbsPending && this.deadFor >= this.retryDelay) {
         this.deadFor = 0;
         this.retry();
       }
@@ -165,6 +231,7 @@ export class PlayScreen implements Screen {
   retry(): void {
     this.deadFor = 0;
     this.retryShown = false;
+    this.orbsPending = false;
     if (this.game.run?.practice || this.game.checkpoints.length > 0) this.game.respawn();
     else this.game.restart();
   }
@@ -230,6 +297,15 @@ export class PlayScreen implements Screen {
       out.push(...spriteButton(art, "checkpoint", w - 120, 30, FRAMES.checkpoint, { scale: 0.8, sizeMult: 1.2 }));
       out.push(...spriteButton(art, "uncheckpoint", w - 45, 30, FRAMES.removeCheckpoint, { scale: 0.8, sizeMult: 1.2, alpha: n > 0 ? 1 : 0.5 }));
     }
+    return out.concat(this.overlayWidgets(view));
+  }
+
+  /** The pop-up, then the orb counter over it. */
+  overlayWidgets(view: UiViewport): Widget[] {
+    const art: ArtLookup = this.game.ui?.art ?? NO_ART;
+    const out: Widget[] = [];
+    if (this.popup) out.push(...this.popup.widgets(art, view.width, view.height));
+    if (this.reward) out.push(...this.reward.widgets(art));
     return out;
   }
 

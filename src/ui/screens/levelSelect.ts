@@ -11,6 +11,7 @@
 import { OFFICIAL_LEVELS } from "../../assets/levels";
 import { DEMO_LEVELS, demoLevel } from "../../game/demoLevel";
 import type { Game } from "../../game/game";
+import { awardedOrbs, baseOrbs } from "../../game/orbs";
 import { FRAMES, levelPageFace } from "../art";
 import { backArrow, corners, gradient, label, NO_ART, popup, scrollDots, shade, spriteButton, TRANSPARENT, type ArtLookup } from "../chrome";
 import { SongsScreen } from "./settings";
@@ -109,20 +110,6 @@ const DOOR_BOB = { distance: 5, seconds: 2.5 };
 
 /** The completed star count's colour. [:340450-340460] */
 const STARS_DONE: Tint = { r: 255, g: 255, b: 50 };
-
-/**
- * The orbs a level gives for its whole run, and a quarter more again once it
- * is finished: twenty a star and twenty more, or 400 for the three levels the
- * game singles out. [gdp GameStatsManager::getBaseCurrency :342949-342970,
- *  getAwardedCurrencyForLevel :343034-343075]
- */
-function baseOrbs(id: number, stars: number): number {
-  return id === 14 || id === 18 || id === 20 ? 400 : 20 * stars + 20;
-}
-
-function awardedOrbs(base: number, best: number): number {
-  return best > 99 ? Math.trunc(base * 0.25) + base : Math.floor(base * (best / 100));
-}
 
 function lerp(a: Tint, b: Tint, t: number): Tint {
   return { r: a.r + (b.r - a.r) * t, g: a.g + (b.g - a.g) * t, b: a.b + (b.b - a.b) * t };
@@ -303,7 +290,7 @@ export class LevelSelectScreen implements Screen {
     } else {
       // The orbs, bottom left: what this level has given of what it can.
       // [LevelPage::updateDynamicPage :340497-340530: bigFont 0.4 at (8, 12), the orb at 0.7 after it]
-      const base = baseOrbs(id, stars);
+      const base = baseOrbs(id, stars, true);
       if (base > 0) {
         const text = `${awardedOrbs(base, progress.best)}/${base + Math.trunc(base * 0.25)}`;
         const textW = art.measure?.("bigFont", text, { scale: 0.4 }).width ?? 30;

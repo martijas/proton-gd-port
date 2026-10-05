@@ -296,6 +296,8 @@ export const FRAMES = {
   coinGrey: "GJ_coinsIcon_gray_001.png",
   userCoin: "GJ_coinsIcon2_001.png",
   orb: "currencyOrbIcon_001.png",
+  /** One orb flying to the counter. */
+  flyingOrb: "currencyOrb_001.png",
   diamond: "GJ_diamondsIcon_001.png",
   secretCoin: "secretCoin_01_001.png",
   lock: "GJ_lock_001.png",

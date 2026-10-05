@@ -399,6 +399,8 @@ test("what a death and a finish record", () => {
       audio: { finishLevel: () => undefined, playerDied: () => undefined },
       commitJumps: () => void commits++,
       recordRun: (r: typeof run, percent: number, coins: readonly number[] = []) => (calls.push([r.id, percent, r.practice, [...coins]]), false),
+      runProgress: () => ({ best: 100 }),
+      awardOrbs: () => 0,
       save: {
         get: () => ({ settings: { autoRetry: false } }),
       },
@@ -438,6 +440,8 @@ test("a replay from the end screen records its own finish", () => {
     commitJumps: () => undefined,
     fullReset: () => void (sim = unfinished()),
     recordRun: (_run: unknown, percent: number) => (recorded.push(percent), false),
+    runProgress: () => ({ best: 100 }),
+    awardOrbs: () => 0,
   } as unknown as ConstructorParameters<typeof PlayScreen>[0];
   const play = new PlayScreen(game);
   play.update(1 / 60);

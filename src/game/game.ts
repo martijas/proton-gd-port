@@ -12,6 +12,7 @@ import { loadObjects, type ObjectData } from "../assets/objectTable";
 import { Scenery } from "../assets/scenery";
 import { Strings } from "../assets/strings";
 import { GameAudio, type LevelTrack } from "../audio/gameAudio";
+import { awardedOrbs, baseOrbs, orbsFor } from "./orbs";
 import { GlContext } from "../engine/gl/context";
 import { SpriteBatch } from "../engine/gl/spriteBatch";
 import { uploadTexture } from "../engine/gl/texture";
@@ -331,6 +332,51 @@ export class Game {
   runStars(run: LevelRun): number {
     if (run.demo) return demoLevel(run.id)?.stars ?? 0;
     return run.online ? run.online.stars : (this.strings.facts(run.id)?.stars ?? 0);
+  }
+
+  /** The orbs a run's level gives for its whole run, before a completion's quarter more. */
+  runOrbBase(run: LevelRun): number {
+    return baseOrbs(run.id, this.runStars(run), !run.online && !run.demo);
+  }
+
+  /**
+   * Pays the orbs a normal-mode run has earned by reaching `percent` when its
+   * best was `before`, adds them to the total, and returns them.
+   * [gdp PlayLayer::destroyPlayer :93263-93268; levelComplete :92829;
+   *  GameStatsManager::awardCurrencyForLevel :356267-356340]
+   */
+  awardOrbs(run: LevelRun, before: number, percent: number): number {
+    if (run.practice) return 0;
+    const orbs = orbsFor(this.runOrbBase(run), this.runStars(run), before, percent);
+    if (orbs > 0) {
+      const total = this.orbTotal();
+      this.save.set((save) => {
+        save.totals.orbs = total + orbs;
+      });
+    }
+    return orbs;
+  }
+
+  /**
+   * The orbs earned in all. A save from before the total was kept counts it
+   * up once from the bests: the official levels', and the saved online ones'.
+   */
+  orbTotal(): number {
+    const save = this.save.get();
+    if (save.totals.orbs >= 0) return save.totals.orbs;
+    let total = 0;
+    for (const [id, progress] of Object.entries(save.levels)) {
+      const stars = this.strings.facts(Number(id))?.stars ?? 0;
+      if (stars > 0) total += awardedOrbs(baseOrbs(Number(id), stars, true), progress.best);
+    }
+    for (const level of save.savedLevels) {
+      const progress = save.online[String(level.id)];
+      if (progress && level.stars > 0) total += awardedOrbs(baseOrbs(level.id, level.stars, false), progress.best);
+    }
+    this.save.set((s) => {
+      s.totals.orbs = total;
+    });
+    return total;
   }
 
   /** A fresh attempt at the level already loaded. */

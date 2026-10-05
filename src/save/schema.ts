@@ -86,6 +86,13 @@ export interface Totals {
    */
   menuKills: number;
   /**
+   * Mana orbs earned, the game's stat 14, which the reward counter shows.
+   * −1 in a save from before it was kept, until the game counts it up from
+   * the levels' bests. [gdp GameStatsManager::awardCurrencyForLevel
+   *  (incrementStat "14")]
+   */
+  orbs: number;
+  /**
    * Achievements earned by something that happened once rather than by a
    * count: tapping cube 55 or cube 50 on the menu.
    * [gdp MenuGameLayer::ccTouchBegan :237637-237655]
@@ -144,7 +151,7 @@ export function defaultSave(): SaveV1 {
     // The game's own starting colours: 0 is the first swatch, 3 the fourth.
     player: { icons: { ...DEFAULT_ICONS }, colour1: 0, colour2: 3, glow: false },
     settings: defaultSettings(),
-    totals: { jumps: 0, nearMiss: false, menuKills: 0, earned: [] },
+    totals: { jumps: 0, nearMiss: false, menuKills: 0, orbs: 0, earned: [] },
   };
 }
 
