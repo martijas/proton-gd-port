@@ -48,6 +48,8 @@ export interface AnimEntity {
   /** Frame name (`Robot_run_003.png`) to the parts that make it up. */
   frames: Record<string, AnimPart[]>;
   animations: Record<string, AnimClip>;
+  /** The clip the sprite starts on. */
+  defaultAnimation?: string;
 }
 
 export interface AnimIndex {

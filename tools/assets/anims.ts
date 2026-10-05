@@ -79,7 +79,11 @@ function readEntity(src: string, name: string, animDescFile: string, definitions
     }
   }
 
-  return { name, textures, frames, animations };
+  const entity: AnimEntity = { name, textures, frames, animations };
+  // The clip the sprite starts on. [gdp CCAnimatedSprite::loadType :30404-30407]
+  const start = defs ? dict(defs, name).defaultAnimation : undefined;
+  if (typeof start === "string" && start !== "") entity.defaultAnimation = start;
+  return entity;
 }
 
 export const animsStep: StepModule = {

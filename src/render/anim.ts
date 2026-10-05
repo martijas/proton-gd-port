@@ -572,32 +572,89 @@ export interface SkeletonSlot {
   frames: (AnimPart | null)[];
 }
 
-export interface SkeletonPlan {
-  clip: string;
+/** One clip of a plan: its frames are `start` to `start + frames - 1` of every slot. */
+export interface SkeletonClip {
+  name: string;
+  start: number;
+  frames: number;
+  /** Seconds per frame. */
   interval: number;
+  looped: boolean;
+}
+
+export interface SkeletonPlan {
+  /** The clips the object can play, the one it starts on first. */
+  clips: SkeletonClip[];
+  /** Every clip's frames, end to end. */
   frames: number;
   slots: SkeletonSlot[];
+  /** The object, whose id picks the clip after one that ends (nextSkeletonClip). */
+  objectId: number;
 }
 
 /**
- * Which clip a decorative entity plays. The beasts in the official levels are
- * scenery rather than characters — nothing tells them to attack — so they play
- * whatever the file calls resting, and it is looped whether or not the clip
- * says so: a beast that played its idle once and froze would look broken.
+ * The clip an animated object plays after one that is not looped ends, given
+ * one of the game's rand() rolls (0..1): the beasts go back to idle01, now
+ * and then to idle02, the bat (918) to its bite, and an attack's or a
+ * sleep's opening to its loop. An object with no rule, or a clip of its
+ * entity's the rule does not name, stops on its last frame (null).
+ * [gdp AnimatedGameObject::animationFinished :302092-302280]
  */
-function restingClip(entity: AnimEntity): string | null {
-  const names = Object.keys(entity.animations);
-  if (names.length === 0) return null;
-  return names.find((n) => n === "loop") ?? names.find((n) => n.startsWith("idle")) ?? names[0];
+export function nextSkeletonClip(objectId: number, finished: string, roll: number): string | null {
+  const idle = (p: number): string => (finished === "idle01" && roll > p ? "idle02" : "idle01");
+  switch (objectId) {
+    case 918:
+      return finished === "attack01" ? "attack01_loop" : "bite";
+    case 1327:
+      return idle(0.75);
+    case 1328:
+      return idle(0.9);
+    case 1584:
+      if (finished === "attack02") return "attack02_loop";
+      if (finished === "sleep") return "sleep_loop";
+      return idle(0.8);
+    case 2012:
+      if (finished === "toAttack03") return "attack03";
+      if (finished === "fromAttack03" || finished === "attack02" || finished === "toAttack01") return "attack01";
+      return idle(0.75);
+    default:
+      return null;
+  }
 }
 
-export function skeletonFor(entity: AnimEntity): SkeletonPlan | null {
-  const clip = restingClip(entity);
-  if (!clip) return null;
-  const anim = entity.animations[clip];
-  const count = Math.max(1, anim.frames);
+/**
+ * Which clip an entity starts on: its definition's defaultAnimation, else
+ * its first clip. [gdp CCAnimatedSprite::loadType :30404-30407 (+536);
+ * AnimatedGameObject::updateObjectAnimation :307180-307186]
+ */
+function startingClip(entity: AnimEntity): string | null {
+  const start = entity.defaultAnimation;
+  if (start && entity.animations[start]) return start;
+  return Object.keys(entity.animations)[0] ?? null;
+}
+
+export function skeletonFor(entity: AnimEntity, objectId = 0): SkeletonPlan | null {
+  const first = startingClip(entity);
+  if (!first) return null;
+  // The starting clip and every clip the chain can reach from it.
+  const names = [first];
+  for (let i = 0; i < names.length; i++) {
+    const clip = entity.animations[names[i]];
+    if (clip.looped) continue;
+    for (const roll of [0, 1]) {
+      const next = nextSkeletonClip(objectId, names[i], roll);
+      if (next && entity.animations[next] && !names.includes(next)) names.push(next);
+    }
+  }
+  const clips: SkeletonClip[] = [];
   const perFrame: AnimPart[][] = [];
-  for (let k = 0; k < count; k++) perFrame.push(animFrame(entity, clip, k) ?? []);
+  for (const name of names) {
+    const anim = entity.animations[name];
+    const count = Math.max(1, anim.frames);
+    clips.push({ name, start: perFrame.length, frames: count, interval: anim.delay > 0 ? anim.delay : 0.06, looped: anim.looped !== 0 });
+    for (let k = 0; k < count; k++) perFrame.push(animFrame(entity, name, k) ?? []);
+  }
+  const count = perFrame.length;
   if (perFrame.every((parts) => parts.length === 0)) return null;
 
   // Slots are keyed by part tag so a limb keeps its sprite across frames even
@@ -618,7 +675,48 @@ export function skeletonFor(entity: AnimEntity): SkeletonPlan | null {
     }
   }
   const slots = order.map((tag) => byTag.get(tag)!).sort((a, b) => a.z - b.z);
-  return { clip, interval: anim.delay > 0 ? anim.delay : 0.06, frames: count, slots };
+  return { clips, frames: count, slots, objectId };
+}
+
+/** Where a skeletal object is in its plan: the clip, when it began, and how many rolls it has made. */
+export interface SkeletonClock {
+  clip: number;
+  began: number;
+  rolls: number;
+}
+
+/**
+ * Starts an object on its first clip, part-way through by one roll, as the
+ * game does each time the object becomes active. [gdp AnimatedGameObject::
+ * activateObject :307207-307219 → updateObjectAnimation :307180-307186
+ * (offsetCurrentAnimation by rand() / 2^31)]
+ */
+export function startSkeleton(plan: SkeletonPlan, clock: SkeletonClock, seconds: number, seed: number): void {
+  const clip = plan.clips[0];
+  clock.clip = 0;
+  clock.began = seconds - hash01(seed, clock.rolls++) * clip.frames * clip.interval;
+}
+
+/**
+ * The plan frame an object shows at `seconds`, moving it on to the next clip
+ * each time a clip that is not looped ends. One with no next clip holds its
+ * last frame.
+ */
+export function skeletonFrame(plan: SkeletonPlan, clock: SkeletonClock, seconds: number, seed: number): number {
+  for (let guard = 0; guard < 64; guard++) {
+    const clip = plan.clips[clock.clip];
+    const k = Math.floor((seconds - clock.began) / clip.interval);
+    if (clip.looped) return clip.start + (((k % clip.frames) + clip.frames) % clip.frames);
+    if (k < clip.frames) return clip.start + Math.max(0, k);
+    const next = nextSkeletonClip(plan.objectId, clip.name, hash01(seed, clock.rolls++));
+    const at = next === null ? -1 : plan.clips.findIndex((c) => c.name === next);
+    if (at < 0) return clip.start + clip.frames - 1;
+    clock.began += clip.frames * clip.interval;
+    clock.clip = at;
+  }
+  // Far behind (a long jump in the clock): pick the chain up from here.
+  clock.began = seconds;
+  return plan.clips[clock.clip].start;
 }
 
 /**

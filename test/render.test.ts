@@ -13,7 +13,20 @@ import type { ColorChannel, HsvShift, LevelHeader, LevelObject } from "../src/le
 import { affine, apply, compose, lerpAngle, wrapDegrees } from "../src/engine/math";
 import { existsSync, readFileSync } from "node:fs";
 import type { ObjectRecord } from "../src/assets/objectTypes";
-import { animMemo, animTimingFor, hash01, objectAnimationFor, randomFrameFor, syncedFrame, type AnimTiming } from "../src/render/anim";
+import {
+  animMemo,
+  animTimingFor,
+  hash01,
+  nextSkeletonClip,
+  objectAnimationFor,
+  randomFrameFor,
+  skeletonFor,
+  skeletonFrame,
+  startSkeleton,
+  syncedFrame,
+  type AnimTiming,
+} from "../src/render/anim";
+import type { AnimEntity } from "../src/assets/anims";
 import { GAME_ANIMATIONS } from "../src/assets/gameAnimations";
 import { TrailRenderer } from "../src/render/trail";
 import { HardStreak, StreakBlend, bandPulse, strokeCorners } from "../src/render/hardStreak";
@@ -1226,4 +1239,53 @@ test("the line and the middleground add as the game's additive sprites while the
   assert.equal(line[line.length - 1], BLEND.NORMAL);
   const still = blends(scenery.buildMiddleground(camera, plain, false, new BackdropDrift(), 0));
   assert.ok(still.every((b) => b === BLEND.NORMAL));
+});
+
+// --- the beasts' clips --------------------------------------------------------
+
+const animPath = (name: string): string => builtPath(`assets/anims/${name}.json`);
+const readEntity = (name: string): AnimEntity => JSON.parse(readFileSync(animPath(name), "utf8")) as AnimEntity;
+
+test("a beast starts on its definition's clip: the bat bites, its jaws opening wide", { skip: existsSync(animPath("GJBeast01")) ? false : "run `npm run build` first" }, () => {
+  // [gdp CCAnimatedSprite::loadType :30404-30407 (defaultAnimation);
+  //  AnimatedGameObject::animationFinished :302102-302121 (918 ? bite)]
+  const plan = skeletonFor(readEntity("GJBeast01"), 918);
+  assert.ok(plan);
+  assert.equal(plan.clips[0].name, "bite");
+  assert.equal(plan.clips[0].looped, true);
+  const jaw = plan.slots.find((s) => s.tag === 1);
+  assert.ok(jaw);
+  const turns = jaw.frames.slice(0, plan.clips[0].frames).map((f) => f?.rot ?? 0);
+  assert.ok(Math.max(...turns) - Math.min(...turns) > 30, `the jaw swings wide: ${Math.min(...turns)}..${Math.max(...turns)}`);
+});
+
+test("a beast's idle that ends picks the next by a roll, and idle02 always goes back to idle01", () => {
+  // [gdp AnimatedGameObject::animationFinished :302122-302151, :302193-302197, :302244-302258]
+  assert.equal(nextSkeletonClip(1327, "idle01", 0.5), "idle01");
+  assert.equal(nextSkeletonClip(1327, "idle01", 0.8), "idle02");
+  assert.equal(nextSkeletonClip(1328, "idle01", 0.8), "idle01");
+  assert.equal(nextSkeletonClip(1328, "idle01", 0.95), "idle02");
+  assert.equal(nextSkeletonClip(1327, "idle02", 0.99), "idle01");
+  assert.equal(nextSkeletonClip(1584, "sleep", 0), "sleep_loop");
+  assert.equal(nextSkeletonClip(2012, "toAttack03", 0), "attack03");
+  assert.equal(nextSkeletonClip(918, "idle01", 0), "bite");
+  assert.equal(nextSkeletonClip(1, "idle01", 0), null);
+});
+
+test("a beast's clock walks its clips one after another, from a random point in the first", { skip: existsSync(animPath("GJBeast02")) ? false : "run `npm run build` first" }, () => {
+  const plan = skeletonFor(readEntity("GJBeast02"), 1327);
+  assert.ok(plan);
+  assert.deepEqual(plan.clips.map((c) => c.name), ["idle01", "idle02"]);
+  const clock = { clip: 0, began: 0, rolls: 0 };
+  startSkeleton(plan, clock, 10, 7);
+  const length = plan.clips[0].frames * plan.clips[0].interval;
+  assert.ok(clock.began <= 10 && clock.began > 10 - length, "part-way into idle01");
+  const played = new Set<string>();
+  for (let t = 10; t < 60; t += 1 / 60) {
+    const k = skeletonFrame(plan, clock, t, 7);
+    const clip = plan.clips[clock.clip];
+    assert.ok(k >= clip.start && k < clip.start + clip.frames, "the frame is in the clip it is playing");
+    played.add(clip.name);
+  }
+  assert.deepEqual([...played].sort(), ["idle01", "idle02"], "both idles play");
 });

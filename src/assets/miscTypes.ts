@@ -51,6 +51,8 @@ export interface AnimEntity {
   frames: Record<string, AnimSprite[]>;
   /** Named animations from objectDefinitions.plist. */
   animations: Record<string, { delay: number; frames: number; looped: 0 | 1; prio: number; usesParts: 0 | 1; other?: number; singleFrame?: string }>;
+  /** The clip the sprite starts on (objectDefinitions.plist's defaultAnimation). */
+  defaultAnimation?: string;
 }
 
 export interface AnimIndex {

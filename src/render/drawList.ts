@@ -73,9 +73,13 @@ import {
   objectAnimationFor,
   randomFrameFor,
   skeletonFor,
+  skeletonFrame,
+  startSkeleton,
   syncedFrame,
   type AnimFrame,
   type AnimTiming,
+  type SkeletonClock,
+  type SkeletonPlan,
   type SkeletonSlot,
 } from "./anim";
 import { ENTER, ENTER_GROW_FROM, ENTER_SLIDE, enterFades, enterPose, enterProgress } from "./enterEffects";
@@ -573,6 +577,9 @@ interface ObjectState {
   blendDetail: Int32Array;
   /** Index into `anims`, or -1. */
   anim: Int32Array;
+  /** Index into `skeletons`, or -1: a beast, whose clip runs on its own clock. */
+  skel: Int32Array;
+  skeletons: { plan: SkeletonPlan; clock: SkeletonClock }[];
   /** Degrees a second it turns; 0 for none. */
   spinSpeed: Float32Array;
   /**
@@ -628,6 +635,8 @@ function objectState(n: number): ObjectState {
     blendChannel: new Int32Array(size).fill(BLEND_NEVER),
     blendDetail: new Int32Array(size).fill(BLEND_NEVER),
     anim: new Int32Array(size).fill(-1),
+    skel: new Int32Array(size).fill(-1),
+    skeletons: [],
     spinSpeed: new Float32Array(size),
     reach: new Float32Array(size),
     glowLock: new Int32Array(size).fill(-1),
@@ -850,6 +859,7 @@ export class DrawList {
       if (book >= 0) {
         const anim = os.anim[o];
         if (anim >= 0) this.showFrame(at, this.flipbooks[book], os.frame[o]);
+        else if (os.skel[o] >= 0) frameAlpha = this.showLimb(at, this.flipbooks[book], os.frame[o]);
         else frameAlpha = this.playFrame(at, this.flipbooks[book], seconds);
       } else if (meta.spin[i] >= 0 && os.angle[o] !== 0) {
         this.turn(at, meta.spin[i] * 12, os.angle[o]);
@@ -979,6 +989,15 @@ export class DrawList {
       const frame = syncedFrame(state.timing, levelTime, triggered, state.memo);
       os.frame[o] = frame;
       os.flash[o] = live ? flashHalves(this.level.objects[o], frame) : 0;
+    }
+    const skel = os.skel[o];
+    if (skel >= 0) {
+      // A beast starts its clip over, part-way in, each time it comes back on
+      // screen, and on a restart. [AnimatedGameObject::activateObject
+      //  :307207-307219; resetObject :307238-307249]
+      const { plan, clock } = os.skeletons[skel];
+      if (os.seen[o] !== this.gather - 1 || seconds < clock.began) startSkeleton(plan, clock, seconds, o);
+      os.frame[o] = skeletonFrame(plan, clock, seconds, o);
     }
     // The turn, from the sim's clock. The game turns an object only while it
     // is in the visible part of the level, from 0 at each reset; that pause
@@ -1251,6 +1270,12 @@ export class DrawList {
     const k = book.frames > 1 ? Math.floor(seconds / book.interval) % book.frames : 0;
     this.showFrame(at, book, k);
     return book.alpha[k];
+  }
+
+  /** Writes frame `k` of a skeletal limb over the copied instance, and returns that frame's alpha. */
+  private showLimb(at: number, book: Flipbook, k: number): number {
+    this.showFrame(at, book, k);
+    return book.alpha[Math.min(Math.max(0, k), book.frames - 1)];
   }
 
   /** Carries a sprite's baked transform through its group's affine. */
@@ -2159,7 +2184,7 @@ function emit(
   // still frames in the table are what the object falls back to when the
   // animation is not loaded, not a layer underneath it.
   const entity = record.ent ? entities?.get(record.ent) : undefined;
-  const plan = entity ? skeletonFor(entity) : null;
+  const plan = entity ? skeletonFor(entity, object.id) : null;
   const entityColour = plan && entity ? entityColours(object.id, entity) : null;
 
   // Its batches. The whole animated sprite of a beast takes the main colour,
@@ -2326,6 +2351,8 @@ function emit(
 
   if (plan && entityColour) {
     stats.skeletons++;
+    objects.skel[order] = objects.skeletons.length;
+    objects.skeletons.push({ plan, clock: { clip: 0, began: 0, rolls: 0 } });
     // A beast is black because its main colour defaults to 1010, which key 21
     // overrides like any other object's; its art is not black art, whatever
     // colour type the table gives it. [customSetup setDefaultMainColorMode
@@ -2336,11 +2363,11 @@ function emit(
     for (let i = 0; i < plan.slots.length; i++) {
       const limb = plan.slots[i];
       const isColour = entityColour.detailTags.has(limb.tag);
-      pushSkeletonSlot(limb, plan.interval, plan.frames, isColour ? detail : body, objectAlpha, transform, isColour ? PART_COLOUR : PART_MAIN);
+      pushSkeletonSlot(limb, plan.clips[0].interval, plan.frames, isColour ? detail : body, objectAlpha, transform, isColour ? PART_COLOUR : PART_MAIN);
       if (entityColour.child && entityColour.child.tag === limb.tag) {
         const tex = entityColour.child.tex;
         const child: SkeletonSlot = { ...limb, frames: limb.frames.map((f) => (f ? { ...f, tex } : null)) };
-        pushSkeletonSlot(child, plan.interval, plan.frames, detail, objectAlpha, transform, PART_COLOUR);
+        pushSkeletonSlot(child, plan.clips[0].interval, plan.frames, detail, objectAlpha, transform, PART_COLOUR);
       }
     }
     return;
