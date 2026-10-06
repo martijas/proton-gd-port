@@ -127,10 +127,26 @@ import {
   PLATFORM_LAUNCH_MIN,
 } from "./constants";
 import { DEG, slerp2D } from "./geometry";
+import {
+  EVENT_BALL_SWITCH,
+  EVENT_FEATHER_LANDING,
+  EVENT_HARD_LANDING,
+  EVENT_NORMAL_JUMP,
+  EVENT_NORMAL_LANDING,
+  EVENT_ROBOT_BOOST_START,
+  EVENT_ROBOT_BOOST_STOP,
+  EVENT_SOFT_LANDING,
+  EVENT_TINY_LANDING,
+} from "./gameEvents";
 
 /** What the player needs from the world: events, the spider's surface search and the level's flags. */
 export interface PlayerWorld {
   emit(type: SimEvent["type"], player: 1 | 2, object?: number, detail?: string): void;
+  /**
+   * Raises a game event (GJGameEvent) for the Event triggers, as this player;
+   * `object` is the one it came from, whose key 446 is the event's extra id.
+   */
+  gameEvent?(event: number, player: 1 | 2, object?: number): void;
   /** spiderTestJump: teleport `p` to the nearest surface against its gravity and flip it. */
   spiderJump(p: Player): void;
   readonly platformer: boolean;
@@ -1564,6 +1580,10 @@ export class Player implements PlayerState {
             this.runRotateAction();
           }
           this.world.emit("jump", this.playerNo, undefined, "ground");
+          // Normal Jump, Robot Boost Start or Ball Switch. [gdp updateJump
+          //  :155874-155901]
+          const event = this.isRobot ? EVENT_ROBOT_BOOST_START : this.isBall ? EVENT_BALL_SWITCH : EVENT_NORMAL_JUMP;
+          this.world.gameEvent?.(event, this.playerNo);
         }
       } else if (this.maybeIsBoosted) {
         // [:155914-155936]
@@ -1574,11 +1594,16 @@ export class Player implements PlayerState {
           this.addToYVelocity(floatD);
         }
         this.addToYVelocity(-floatD);
+        // Robot Boost Stop, each step a robot's ended hold leaves it rising
+        // with the button up. [gdp updateJump :155937-155946]
+        if (this.isRobot && this.robotHoldEnded && !this.holding) this.world.gameEvent?.(EVENT_ROBOT_BOOST_STOP, this.playerNo);
         // A platformer boost also ends once the player stops rising.
         // [gd-ida-decomp.cpp:155949-155953; playerIsMovingUp :144378-144389]
         if (this.fallingBugged() || (this.world.platformer && !(this.flipped ? this.yVel < 0 : this.yVel > 0))) {
           this.maybeIsBoosted = false;
           this.onGround2 = false;
+          // And once more as it starts to fall, if the hold never ended. [:155958-155969]
+          if (this.isRobot && !this.robotHoldEnded) this.world.gameEvent?.(EVENT_ROBOT_BOOST_STOP, this.playerNo);
         }
       } else {
         if (
@@ -1956,6 +1981,15 @@ export class Player implements PlayerState {
   hitGround(objIdx: number, ceiling: boolean): void {
     const v9 = this.rel(this.yVel);
     if (!ceiling && !this.wasOnGround && !this.onGround) this.world.emit("land", this.playerNo, objIdx >= 0 ? objIdx : undefined);
+    // The landing's game event, by how fast it came down: hard past 14,
+    // normal past 8, soft past 4, and past 1 feather, or tiny for a player
+    // already on the ground. Never for the wave. [gdp PlayerObject::hitGround
+    //  :150025-150054; playerIsFalling :144307-144318]
+    if (!this.isWave && this.world.gameEvent) {
+      const landing =
+        v9 < -14 ? EVENT_HARD_LANDING : v9 < -8 ? EVENT_NORMAL_LANDING : v9 < -4 ? EVENT_SOFT_LANDING : v9 < -1 ? (this.onGround2 ? EVENT_TINY_LANDING : EVENT_FEATHER_LANDING) : 0;
+      if (landing !== 0) this.world.gameEvent(landing, this.playerNo, objIdx >= 0 ? objIdx : undefined);
+    }
     this.onGround2 = true;
     if (v9 <= LANDING_LATCH_MAX_VELOCITY) {
       this.onGround = true;

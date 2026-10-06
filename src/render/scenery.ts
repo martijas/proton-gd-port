@@ -29,13 +29,19 @@ export const MIDDLEGROUND_SPEED = { x: 0.3, y: 0.5 } as const;
 /** The floor the ground hangs from; the simulation's floor is the same line. */
 export const FLOOR_Y = 0;
 /**
- * The middleground's own height on the screen, before the zoom moves it: the
- * game takes it from a table the decompile does not have
- * (GJMGLayer::defaultYOffsetForBG2 :382677-382686, off_9826A8), so its foot
- * is put on the floor line as the camera starts, where the art expects it.
- * [guess]
+ * The middleground's own height on the screen, before the zoom moves it, by
+ * its index (kA25): 25 for the first, 30 for the second and third, 0 for any
+ * other. The decompile reads it from a table in the binary (off_9826A8); the
+ * values are Geode's inline reimplementation of the same function.
+ * [gdp GJMGLayer::defaultYOffsetForBG2 :382677-382686, stored at +364 by
+ *  GJMGLayer::init :382963-382964; geode-sdk/bindings 2.2081
+ *  inline/GJMGLayer.cpp]
  */
-const MIDDLEGROUND_BASE_Y = 90;
+export function middlegroundBaseY(index: number): number {
+  if (index === 1) return 25;
+  if (index === 2 || index === 3) return 30;
+  return 0;
+}
 /** The game's y of the floor line. */
 const GAME_FLOOR = 90;
 
@@ -118,13 +124,14 @@ export function middlegroundScale(zoom: number): number {
 
 /**
  * Where the middleground's foot is on the screen, from the screen's bottom:
- * its base plus the MG trigger's offset, carried by half the zoom's change,
- * less the camera's height in the level (`bottom`, the view's foot in the
- * game's y) times the middleground's up speed `s`. [gdp updateCameraBGArt
- * :431149 (v30, the not-editor branch; v20 the speed, +704)]
+ * its `base` (middlegroundBaseY) plus the MG trigger's offset, carried by half
+ * the zoom's change, less the camera's height in the level (`bottom`, the
+ * view's foot in the game's y) times the middleground's up speed `s`.
+ * [gdp updateCameraBGArt :431149 (v30, the not-editor branch; v19 the base,
+ *  +364; v20 the speed, +704)]
  */
-export function middlegroundFoot(offsetY: number, zoom: number, bottom: number, s: number = MIDDLEGROUND_SPEED.y): number {
-  return (MIDDLEGROUND_BASE_Y + offsetY) * (1 - s + zoom * s) - bottom * s;
+export function middlegroundFoot(base: number, offsetY: number, zoom: number, bottom: number, s: number = MIDDLEGROUND_SPEED.y): number {
+  return (base + offsetY) * (1 - s + zoom * s) - bottom * s;
 }
 
 /**
@@ -222,7 +229,15 @@ export class SceneryRenderer {
    * as two passes rather than two units, because the budget is sixteen and all
    * sixteen are already spoken for. One level uses this: Dash.
    */
-  private middleground: { base: WebGLTexture; detail: WebGLTexture | null; unit: number; width: number; height: number; detailHeight: number } | null = null;
+  private middleground: {
+    base: WebGLTexture;
+    detail: WebGLTexture | null;
+    unit: number;
+    baseY: number;
+    width: number;
+    height: number;
+    detailHeight: number;
+  } | null = null;
   private ground: Tile | null = null;
   private groundDetail: Tile | null = null;
   private scratch = new Float32Array(256 * INSTANCE_FLOATS);
@@ -276,6 +291,7 @@ export class SceneryRenderer {
       base,
       detail,
       unit,
+      baseY: middlegroundBaseY(index),
       width: entry.base.w / ppu,
       height: entry.base.h / ppu,
       detailHeight: (entry.detail?.h ?? entry.base.h) / ppu,
@@ -316,7 +332,7 @@ export class SceneryRenderer {
     const width = mg.width * scale;
     const height = (detail ? mg.detailHeight : mg.height) * scale;
     const x = left + drift.x / zoom;
-    const foot = bottom + middlegroundFoot(offsetY, zoom, bottom + GAME_FLOOR, speedY) / zoom;
+    const foot = bottom + middlegroundFoot(mg.baseY, offsetY, zoom, bottom + GAME_FLOOR, speedY) / zoom;
     const first = Math.floor((view.x0 - x) / width);
     const last = Math.ceil((view.x1 - x) / width);
     const tint = colors.get(detail ? CHANNEL.MIDDLEGROUND_2 : CHANNEL.MIDDLEGROUND);

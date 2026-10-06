@@ -176,7 +176,7 @@ const STATUS: ReadonlyMap<number, TriggerEntry> = new Map<number, TriggerEntry>(
   [3614, { status: "partial", note: "runs, stops at its target and spawns there; key 469 (ignore time warp) divides the warp back out, which the decompile does not show" }],
   [3615, DONE],
   [3617, DONE],
-  [3604, { status: "partial", note: "listens for game events and spawns its group; the sim raises the button events (69-74) and the coin and pickup events (62, 63), but not the landing, orb, pad, portal and other events the tower floors also listen for" }],
+  [3604, { status: "partial", note: "listens for game events and spawns its group; the sim raises the landings (1-5), orb and pad events (7-9, 34-49), jumps and robot boosts (12-14, 19), coin and pickup (62, 63) and buttons (69-74), every event the tower floors use, but not the portal, gravity and other events" }],
   [3642, { status: "unsupported", note: "a beat guide for the editor; it has no effect while a level plays" }],
   [3662, { status: "partial", note: "copies one group's visibility onto another once, rather than tracking it" }],
 
@@ -184,7 +184,7 @@ const STATUS: ReadonlyMap<number, TriggerEntry> = new Map<number, TriggerEntry>(
   [3029, { status: "partial", note: "the new background is recorded; the art is not swapped mid-level yet" }],
   [3030, { status: "partial", note: "the new ground is recorded; the art is not swapped mid-level yet" }],
   [3031, { status: "partial", note: "the new middleground is recorded; the art is not swapped mid-level yet" }],
-  [2999, { status: "partial", note: "eases the middleground's offset to key 29 over the move time with the easing; where the middleground stands before the offset is the game's per-art table, which the decompile does not have, so the floor line stands in for it (render/scenery.ts MIDDLEGROUND_BASE_Y)" }],
+  [2999, DONE],
   [3606, DONE],
   [3612, DONE],
   [1818, { status: "todo", note: "the background effect layer is not built" }],

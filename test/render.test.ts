@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import type { Atlas, AtlasFrame } from "../src/assets/atlasTypes";
 import { frameQuad, quadUv } from "../src/render/frameQuad";
 import { ColorTable, applyHsv, hsvToRgb, lightBackgroundColor, rgbToHsv } from "../src/render/colors";
-import { BACKGROUND_SPEED, BackdropDrift, SceneryRenderer, backdropPlacement, backgroundScale, middlegroundFoot, middlegroundScale } from "../src/render/scenery";
+import { BACKGROUND_SPEED, BackdropDrift, SceneryRenderer, backdropPlacement, backgroundScale, middlegroundBaseY, middlegroundFoot, middlegroundScale } from "../src/render/scenery";
 import { Camera } from "../src/render/camera";
 import { BLEND, blendAdds } from "../src/engine/gl/spriteBatch";
 import type { ColorChannel, HsvShift, LevelHeader, LevelObject } from "../src/level/types";
@@ -251,12 +251,15 @@ test("the background's tile is placed from the screen through the zoom", () => {
   assert.deepEqual(b, { width: 1228.8, height: 1228.8, x: 40, y: -110 });
 });
 
-test("the middleground stands on the floor line at the start, climbs half as fast as the camera and is 1.2 times its art", () => {
-  // [gdp updateCameraBGArt :431122-431145; the base is a guess, see
-  //  MIDDLEGROUND_BASE_Y]
-  assert.equal(middlegroundFoot(0, 1, 0), 90, "the floor line, with the view's foot on the game's 0");
-  assert.equal(middlegroundFoot(0, 1, 100), 40, "100 up, the floor line is at -10 and the middleground at 40");
-  assert.equal(middlegroundFoot(24, 1, 0), 114, "the MG trigger lifts it");
+test("the middleground stands on its own base, climbs half as fast as the camera and is 1.2 times its art", () => {
+  // The base was the floor line, 90, where the game's table says 25 or 30:
+  // the middleground stood 60 too high in the 4 % screenshot.
+  // [gdp updateCameraBGArt :431122-431149; GJMGLayer::defaultYOffsetForBG2
+  //  :382677-382686]
+  assert.deepEqual([0, 1, 2, 3, 4].map(middlegroundBaseY), [0, 25, 30, 30, 0]);
+  assert.equal(middlegroundFoot(30, 0, 1, 0), 30, "the base, with the view's foot on the game's 0");
+  assert.equal(middlegroundFoot(30, 0, 1, 100), -20, "100 up, half of it comes off");
+  assert.equal(middlegroundFoot(30, 24, 1, 0), 54, "the MG trigger lifts it");
   assert.equal(middlegroundScale(1), 1.2);
   assert.ok(Math.abs(middlegroundScale(0.5) - 1.2 * 0.85) < 1e-12);
 });

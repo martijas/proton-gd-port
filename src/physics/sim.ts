@@ -120,6 +120,7 @@ import { buildTriggerIndex, type TriggerIndex } from "../triggers/spec";
 import { cameraTweenDone, stepCameraTween, type CameraTween } from "../triggers/easing";
 import { Camera, groundLayers } from "../render/camera";
 import { designSize } from "../ui/viewport";
+import { EVENT_ORB_ACTIVATED, EVENT_ORB_TOUCHED, EVENT_PAD_ACTIVATED, ORB_EVENTS, PAD_EVENTS } from "./gameEvents";
 import {
   AUDIO_EVENT_KINDS,
   EVENT_JUMP_PUSH,
@@ -1150,6 +1151,11 @@ export class SimImpl implements Sim, PlayerWorld {
   // ---------------------------------------------------------------------------
   // PlayerWorld
   // ---------------------------------------------------------------------------
+
+  gameEvent(event: number, player: 1 | 2, object?: number): void {
+    const extra = object === undefined ? 0 : Math.trunc(Number(this.level.objects[object].props[446] ?? 0)) || 0;
+    this.triggers.gameEvent(event, extra, player);
+  }
 
   emit(type: SimEvent["type"], player: 1 | 2, object?: number, detail?: string): void {
     const e: SimEvent = { tick: this.tick, type, player };
@@ -3516,6 +3522,10 @@ export class SimImpl implements Sim, PlayerWorld {
     //  :463251-463253); bumpPlayer's spider pad :157055-157064]
     if (type === "spider" || (this.effectBits(i) & EFFECT_NONE) === 0) this.wave("bump", p, i, type);
     this.emit("pad", p.playerNo, i, type);
+    // For no player in particular; the blue pad raises only its own.
+    // [gdp GJBaseGameLayer::bumpPlayer :463199-463202; gravBumpPlayer :463256]
+    this.triggers.gameEvent(PAD_EVENTS[type] ?? 0, 0, 0);
+    if (type !== "blue") this.triggers.gameEvent(EVENT_PAD_ACTIVATED, 0, 0);
     return true;
   }
 
@@ -3526,6 +3536,8 @@ export class SimImpl implements Sim, PlayerWorld {
    * gd-ida-decomp.cpp:463276-463292]
    */
   private playerTouchedRing(p: Player, i: number): void {
+    // Orb Touched, for a ring not yet powered. [gdp :463281-463286]
+    if (!this.ringPower.has(i)) this.triggers.gameEvent(EVENT_ORB_TOUCHED, 0, 0);
     p.addToTouchedRings(i);
     // powerOnObject: a ring that was not powered makes its circle, unless it
     // has no effects or is the toggle block. [RingObject::powerOnObject
@@ -3556,6 +3568,10 @@ export class SimImpl implements Sim, PlayerWorld {
     if (type === "toggle" ? p.touchedCustomRing : type === "teleport" ? p.touchedTeleportRing : p.touchedRing) return;
     p.usedRings.push(i);
     p.dropTouchedRing(i);
+    // Orb Activated and the orb's own event, as this player, before it acts.
+    // [gdp PlayerObject::ringJump :159920-159926]
+    this.triggers.gameEvent(EVENT_ORB_ACTIVATED, 0, p.playerNo);
+    this.triggers.gameEvent(ORB_EVENTS[type] ?? 0, 0, p.playerNo);
     // hasBeenActivated, by either player, which the ring's circle asks; a
     // multi-activate ring is never marked. [EffectGameObject::triggerActivated
     //  :298093-298101]

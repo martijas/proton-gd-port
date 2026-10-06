@@ -20,7 +20,7 @@ import { closestDirection, mergeRemap, ownRemap } from "../src/triggers/runtime"
 import { multipliedColorValue, pulseEnvelope } from "../src/render/colors";
 import type { ObjectsFile } from "../src/assets/objectTypes";
 import { LEVELS_DIR, loadObjectTable, loadOfficialLevel, makeSim, builtPath, readMacro } from "./helpers";
-import { buildLevel, emptyLevel, makeHeader, simOn, stepN } from "./levelKit";
+import { buildLevel, emptyLevel, HOLD, makeHeader, simOn, stepN } from "./levelKit";
 import { NO_INPUT, type PlayerInput } from "../src/physics/types";
 
 const objectsPath = builtPath("assets/objects.json");
@@ -1054,6 +1054,44 @@ test("key 525 picks a player, key 447 an extra id, and key 431 takes a listener 
   assert.equal(count({ 430: "69", 447: "3" }), 0, "an extra id the button never has");
   assert.equal(count({ 430: "69" }, [{ id: 3604, x: 0, y: 330, props: { 51: "5", 430: "69", 431: "1" } }]), 0, "taken away");
   assert.equal(count({ 430: "70" }), 0, "a release is its own event");
+});
+
+test("a cube's jump raises Normal Jump and its landing Normal Landing, by how fast it comes down", () => {
+  // A jump leaves at about 11 and comes back at about -11: past 8, under 14.
+  // [gdp updateJump :155874-155901; PlayerObject::hitGround :150025-150054]
+  const run = (events: string): number => {
+    const sim = simOn(eventLevel({ 430: events }, [], false));
+    stepN(sim, NO_INPUT, 2);
+    stepN(sim, HOLD, 1);
+    stepN(sim, NO_INPUT, 120);
+    return sim.triggers.itemCount(1);
+  };
+  assert.equal(run("12"), 1, "the jump");
+  assert.equal(run("4"), 1, "a normal landing");
+  assert.equal(run("2.3.5"), 0, "not feather, soft or hard");
+});
+
+test("a yellow pad raises Yellow Pad and Pad Activated; a yellow orb Orb Touched, Orb Activated and Yellow Orb", () => {
+  // [gdp GJBaseGameLayer::bumpPlayer :463199-463202; playerTouchedRing
+  //  :463281-463286; PlayerObject::ringJump :159920-159926]
+  const pad = (events: string): number => {
+    const sim = simOn(eventLevel({ 430: events }, [{ id: 35, x: 150, y: 32 }], false));
+    stepN(sim, NO_INPUT, 200);
+    return sim.triggers.itemCount(1);
+  };
+  assert.equal(pad("45"), 1, "yellow pad");
+  assert.equal(pad("9"), 1, "pad activated");
+  assert.equal(pad("46.34.8"), 0, "not pink, nor an orb");
+  const orb = (events: string, press: boolean): number => {
+    const sim = simOn(eventLevel({ 430: events }, [{ id: 36, x: 150, y: 50 }], false));
+    stepN(sim, NO_INPUT, 2);
+    for (let i = 0; i < 300; i++) sim.step(press && sim.state.x > 130 ? HOLD : NO_INPUT);
+    return sim.triggers.itemCount(1);
+  };
+  assert.equal(orb("7", false), 1, "touched without a press");
+  assert.equal(orb("8", false), 0, "not activated without one");
+  assert.equal(orb("8", true), 1, "activated");
+  assert.equal(orb("34", true), 1, "yellow orb");
 });
 
 test("picking up a collectible raises Pickup Item", () => {

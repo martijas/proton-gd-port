@@ -326,7 +326,8 @@ remaining gaps are counted by `npm run triggers`.
   their groups; a Count waits for its number instead of looking once; a Pickup
   multiplies, divides or sets; groups are sorted by x before a spawn; Follow
   copies whatever moved the object it follows, so The Tower's cars ride their
-  wheels; and the Event trigger hears the buttons and pickups.
+  wheels; and the Event trigger hears the buttons, pickups, jumps, landings,
+  orbs and pads.
   `data/ref/boomlings-notes.md` #1-#8 and #33-#35 have the details.
 - **Progression and sound, the game's way.** A normal clear earns the normal
   achievement and a practice clear the practice one, where they had been
@@ -716,15 +717,9 @@ tweens them and Area Stop ends them. Fade and Tint are not built yet.
 particles' opacity, the additive blend and the pause fixed, the frame matches
 the screenshot of the real game but for these:
 
-- The middleground stands about 60 units too high. Its base height
-  (`MIDDLEGROUND_BASE_Y` in `render/scenery.ts`) is a guess: the game takes
-  it from a table (`GJMGLayer::defaultYOffsetForBG2`, IDA:382677-382686)
-  whose values are in the exe, not the decompile. The rest of the placement
-  is the game's (`updateCameraBGArt`), and every level with a middleground has
-  the same error.
-- There are no circle waves. `CCCircleWave`, the thin ring that grows and
-  fades — the spider's dash makes three, and the orbs, pads, portals and
-  pickups about forty more — is not built.
+- The circle waves (`render/circleWaves.ts`) are drawn for the orbs, pads,
+  portals, pickups, the spider and deaths; the level-complete effects that
+  also make them are not drawn yet.
 - The spider portal's last particles linger. Once the Alpha trigger stops its
   system, the sixteen or so already out live out their lives here, where the
   real screenshot shows none half a second later. The port does what
@@ -765,8 +760,9 @@ of its own (37) in `PlayLayer::addObject` (IDA:90320-90345).
 block where it now stands, so a squeeze under one is approximate: the game's
 moving-object branch of the collision is one long function that waits for a
 port of the whole. Advanced Follow (3016) and the area Fade and Tint are not
-built; `npm run triggers` counts these. The Event trigger hears the buttons and pickups but not the
-landings, orbs and pads the tower floors also listen for. Ice and the slope
+built; `npm run triggers` counts these. The Event trigger hears the buttons,
+pickups, jumps, landings, robot boosts, orbs and pads, which covers every event
+the tower floors listen for, but not the portal and gravity events. Ice and the slope
 and boost slides still use a measured ramp. `data/ref/boomlings-notes.md`
 lists the rest under its status.
 
