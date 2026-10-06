@@ -22,6 +22,8 @@ import type { OnlineLevel } from "../online/api";
 import { loadHostConfig } from "../online/hostConfig";
 import { createSim } from "../physics/index";
 import { modesOf } from "../physics/levelModes";
+import { Mods } from "../mods/index";
+import { START_POS_ID } from "../physics/objectData";
 import { countsAsJump, NO_INPUT, TICK_RATE, type Sim, type SimSnapshot } from "../physics/types";
 import { Scene } from "../render/scene";
 import { attachHostBridge } from "../save/host";
@@ -90,6 +92,11 @@ export interface LevelRun {
    *  without one); released only with the layer :101875]
    */
   startState?: { sim: Sim; snapshot: SimSnapshot } | null;
+  /**
+   * A cheat or safe mode was on at some point in this attempt, so it saves
+   * nothing. A fresh attempt clears it; a practice respawn does not.
+   */
+  cheated: boolean;
 }
 
 /** A place a practice run, or a platformer's checkpoint object, can come back to. */
@@ -128,6 +135,7 @@ export class Game {
   readonly scene: Scene;
   readonly stack = new ScreenStack();
   readonly save: SaveStore;
+  readonly mods: Mods;
   readonly input = new InputState();
   readonly loop: GameLoop;
 
@@ -170,12 +178,17 @@ export class Game {
   private startHold = 0;
   /** Set by fullReset for the restart it makes, as delayedFullReset sets +11736. */
   private replayPending = false;
+  /** The start position the StartPos Switcher picked, by object index, -1 for none; unset is the level's own. */
+  private startPosChoice: number | undefined;
+  private startPosList: { level: Level; indices: number[] } | null = null;
 
   constructor(readonly canvas: HTMLCanvasElement) {
     this.gl = new GlContext(canvas);
     this.batch = new SpriteBatch(this.gl.gl);
     this.scene = new Scene(this.gl);
-    this.save = new SaveStore(storage());
+    const store = storage();
+    this.save = new SaveStore(store);
+    this.mods = new Mods(store);
     this.uiInput = new UiInput(this.stack, this.input);
     this.view = viewportFor(canvas.clientWidth || 960, canvas.clientHeight || 540);
     this.loop = new GameLoop(
@@ -232,6 +245,7 @@ export class Game {
     this.scene.effectsEnabled = this.save.get().settings.shaders;
 
     this.input.attach(this.canvas);
+    this.mods.attach(this);
     attachHostBridge(this.save, { onReset: () => this.onSaveReset?.() });
     this.audio.engine.attachLifecycle({
       // A hidden pane still gets the occasional frame, and one frame is a
@@ -303,8 +317,10 @@ export class Game {
 
   private async begin(start: Pick<LevelRun, "id" | "name" | "level" | "online" | "demo" | "practice">, track: LevelTrack | undefined): Promise<void> {
     const { level } = start;
-    this.run = { ...start, lastPercent: 0, attemptStartedAt: performance.now(), jumps: 0, attemptLabel: { x: 0, y: 0 }, attempt: 0 };
+    this.run = { ...start, lastPercent: 0, attemptStartedAt: performance.now(), jumps: 0, attemptLabel: { x: 0, y: 0 }, attempt: 0, cheated: false };
     this.jumpsPending = 0;
+    this.startPosChoice = undefined;
+    this.mods.levelEntered();
     await this.scene.setLevel(level, this.objects.render, this.atlas, null);
     // Every icon the level can turn the player into, loaded now rather than
     // on the first portal, so entering a mode never blinks the player out
@@ -391,7 +407,8 @@ export class Game {
     const started = run.attempt > 0 || this.replayPending;
     this.replayPending = false;
     run.attempt++;
-    const seed = (Math.random() * 0x7fffffff) | 0;
+    run.cheated = false;
+    const seed = this.mods.seed() ?? (Math.random() * 0x7fffffff) | 0;
     let sim: Sim;
     const warm = run.startState;
     if (warm) {
@@ -415,6 +432,7 @@ export class Game {
         player2: this.strings.playerColour(look.colour2),
         practice: run.practice,
         shader: previous,
+        startPosition: this.mods.on("startposSwitcher") ? this.startPosChoice : undefined,
       });
       if (sim.startPosition >= 0) run.startState = { sim, snapshot: sim.snapshot() };
     }
@@ -428,14 +446,20 @@ export class Game {
     this.scene.camera.reset(sim.state, sim.triggers.camera);
     // Every reset but the level's first puts the player back with its rings.
     // [gdp PlayLayer::resetLevel :105947-105951]
-    if (run.attempt > 1) this.scene.playSpawnEffect();
+    if (run.attempt > 1 && !this.mods.on("noRespawnFlash")) this.scene.playSpawnEffect();
     run.attemptLabel = this.attemptLabelAt(run.attempt === 1 && !run.level.header.platformer);
+    this.mods.attemptStarted(sim, seed);
     // A platformer that had started holds still for a moment, then starts
     // its music; any other attempt starts at once. A start position has
     // warmed the level up; the music starts where it got to.
     // [gdp PlayLayer::resetLevel :105994-106050; startGameDelayed :105470-105474]
     this.startHold = run.level.header.platformer && started ? PLATFORMER_START_HOLD : 0;
-    if (this.startHold === 0) this.audio.startAttempt(sim, run.practice);
+    if (this.startHold === 0) this.audio.startAttempt(sim, this.practiceMusic());
+  }
+
+  /** Whether the music is practice's: in practice, unless the Practice Music Hack plays the level's song. */
+  practiceMusic(): boolean {
+    return (this.run?.practice ?? false) && !this.mods.on("practiceMusic");
   }
 
   /**
@@ -449,7 +473,49 @@ export class Game {
     run.practice = true;
     this.groundedSince = 0;
     this.sim?.setPractice(true);
-    this.audio.enterPractice();
+    if (this.practiceMusic()) this.audio.enterPractice();
+  }
+
+  /** Whether the run in progress may save: no cheat or safe mode in this attempt, nor on now. */
+  runSaves(): boolean {
+    return !(this.run?.cheated ?? false) && !this.mods.blocksSaving();
+  }
+
+  /** The mod menu's Instant Complete: the level ends now, and saves nothing. */
+  instantComplete(): void {
+    const sim = this.sim;
+    const run = this.run;
+    if (!sim || !run || !this.canStep) return;
+    run.cheated = true;
+    sim.finishNow();
+  }
+
+  /** The level's start positions by object index, left to right. */
+  startPositions(): number[] {
+    const level = this.run?.level;
+    if (!level) return [];
+    if (this.startPosList?.level !== level) {
+      const found = level.objects.filter((o) => o.id === START_POS_ID).sort((a, b) => a.x - b.x || a.index - b.index);
+      this.startPosList = { level, indices: found.map((o) => o.index) };
+    }
+    return this.startPosList.indices;
+  }
+
+  /**
+   * The StartPos Switcher: the next start position along, or back to the
+   * level's start past either end, and a fresh attempt from it. False when
+   * the level has none.
+   */
+  switchStartPos(step: 1 | -1): boolean {
+    const run = this.run;
+    const all = this.startPositions();
+    if (!run || all.length === 0) return false;
+    const choices = [-1, ...all];
+    const current = choices.indexOf(this.sim?.startPosition ?? -1);
+    this.startPosChoice = choices[(current + step + choices.length) % choices.length];
+    run.startState = null;
+    this.restart();
+    return true;
   }
 
   /**
@@ -525,9 +591,10 @@ export class Game {
     this.groundedSince = 0;
     this.scene.resetInterpolation();
     this.scene.camera.reset(sim.state, sim.triggers.camera);
-    this.scene.playSpawnEffect();
+    if (!this.mods.on("noRespawnFlash")) this.scene.playSpawnEffect();
     run.attemptLabel = this.attemptLabelAt(false);
-    this.audio.respawn(sim, run.practice, kept);
+    this.mods.respawned(sim);
+    this.audio.respawn(sim, this.practiceMusic(), kept);
   }
 
   /**
@@ -624,6 +691,9 @@ export class Game {
   /** Ends the run and goes back to wherever the player came from. */
   endLevel(): void {
     this.audio.stopLevel();
+    this.audio.setMusicSpeed(1);
+    this.loop.timeScale = 1;
+    this.mods.levelEnded();
     this.sim = null;
     this.run = null;
     this.startHold = 0;
@@ -644,6 +714,11 @@ export class Game {
    * state never ends.
    */
   private get stepping(): boolean {
+    return this.canStep && !this.mods.frozen;
+  }
+
+  /** Whether the simulation may advance, the frame stepper aside: a level running, nothing in the way. */
+  private get canStep(): boolean {
     const sim = this.sim;
     if (!sim || this.loading || !this.stack.ticks || this.startHold > 0) return false;
     return !sim.state.dead && !sim.state.finished;
@@ -653,13 +728,15 @@ export class Game {
     const sim = this.sim;
     if (sim && this.startHold > 0 && !this.loading && this.stack.ticks) {
       // The game's delay is an action on the layer, so a pause holds it too.
-      if (--this.startHold === 0) this.audio.startAttempt(sim, this.run?.practice ?? false);
+      if (--this.startHold === 0) this.audio.startAttempt(sim, this.practiceMusic());
       return;
     }
-    if (!sim || !this.stepping) return;
-    const p1 = this.input.input(1);
-    const p2 = this.input.input(2);
+    if (!sim || !this.canStep || !this.mods.takeStep()) return;
+    if (this.run && this.mods.blocksSaving()) this.run.cheated = true;
+    this.mods.prepare(sim);
+    const [p1, p2] = this.mods.inputs(sim, this.input.input(1), this.input.input(2));
     sim.step(p1, sim.state2 ? p2 : NO_INPUT);
+    this.mods.stepped(sim);
     // A platformer's checkpoint object lays one down in practice and in a
     // normal run alike; a death goes back to it.
     const laid = sim.takePlatformerCheckpoint();
@@ -684,7 +761,7 @@ export class Game {
   commitJumps(): void {
     const n = this.jumpsPending;
     this.jumpsPending = 0;
-    if (n > 0) this.save.set((save) => void (save.totals.jumps += n));
+    if (n > 0 && this.runSaves()) this.save.set((save) => void (save.totals.jumps += n));
   }
 
   /** Practice lays a checkpoint by itself after a stretch on the ground. */
@@ -707,12 +784,14 @@ export class Game {
     this.view = viewportFor(this.gl.gl.drawingBufferWidth, this.gl.gl.drawingBufferHeight);
     this.uiInput.setViewport(this.view);
     this.scene.camera.setAspect(this.view.width, this.view.height);
+    this.applyMods();
     this.stack.update(dt);
 
     if (this.sim) {
       const c = this.scene.camera.centre();
       this.audio?.update(this.sim, [c.x, c.y]);
-      if (this.audio && !this.loading) this.scene.pulse = this.audio.pulse(this.stack.freezesLevel ? 0 : dt, this.run?.practice ?? false);
+      // Practice's pulse is flat, which is what No Pulse wants too.
+      if (this.audio && !this.loading) this.scene.pulse = this.audio.pulse(this.stack.freezesLevel ? 0 : dt, this.practiceMusic() || this.mods.on("noPulse"));
     }
     // Under the pause menu the level's own clock stops too, not only the
     // run: the colours, pulses, screen effects and particles hold still.
@@ -730,6 +809,26 @@ export class Game {
     const widgets = this.stack.build(this.view);
     widgets.push(...this.noticeWidgets(), ...this.achievementWidgets());
     this.ui?.draw(this.batch, this.view, widgets, (w, out) => drawIcon(w, out, this.iconArt), this.uiInput.heldId);
+    this.mods.frame();
+  }
+
+  /** The mod menu's switches that the loop, the sound and the renderer read, set once a frame. */
+  private applyMods(): void {
+    const mods = this.mods;
+    const inLevel = this.sim !== null;
+    const speed = inLevel ? mods.speed : 1;
+    this.loop.timeScale = speed;
+    this.audio?.setMusicSpeed(mods.on("speedhackMusic") ? speed : 1);
+    const settings = this.save.get().settings;
+    this.scene.particlesEnabled = settings.particles && !mods.on("noParticles");
+    this.scene.effectsEnabled = settings.shaders && !mods.on("noShaders");
+    const look = this.scene.mods;
+    look.hidePlayer = mods.on("hidePlayer");
+    look.noShake = mods.on("noShake");
+    look.noWaveTrail = mods.on("noWaveTrail");
+    look.noDeathEffect = mods.on("noDeathEffect");
+    look.sameDualColour = mods.on("sameDualColour");
+    look.rainbow = mods.on("rainbowIcon") ? mods.value("rainbowIcon") : 0;
   }
 
   /** What a menu needs to draw an icon: the pages, the units, the colours, the poses. */

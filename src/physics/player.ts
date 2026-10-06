@@ -142,6 +142,8 @@ export interface PlayerWorld {
   readonly dual: boolean;
   /** kA32, which both players carry as +1169. [resetLevelVariables :462956-462959] */
   readonly fixGravityBug: boolean;
+  /** The mod menu's jump hack (SimCheats.jumpHack); absent is off. */
+  readonly jumpHack?: boolean;
   /**
    * +2072 on both players, "boost slide": a platformer push slides out at
    * 0.05 a step whether or not a button is held. !kA45 at every reset, and
@@ -1524,7 +1526,8 @@ export class Player implements PlayerState {
       const floatB = GRAVITY_FACTOR[this.mode];
       // v50: the step's gravity, a float. [:155914]
       const v50 = Math.fround(floatC * dt);
-      if (this.onGround && jumpBufferedAndRingJump && !this.dashing) {
+      const grounded = this.onGround || (this.world.jumpHack === true && this.stateRingJump);
+      if (grounded && jumpBufferedAndRingJump && !this.dashing) {
         if (this.isSpider) {
           this.world.spiderJump(this);
         } else {

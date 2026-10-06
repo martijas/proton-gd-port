@@ -4,7 +4,7 @@
 // blocks, collectibles, teleports), the squeeze tests, dual mode and the
 // snapshot/restore the autoplayer leans on.
 
-import { pickStartPosition } from "../level/decode";
+import { parseStartPosition, pickStartPosition } from "../level/decode";
 import type { GameMode, Level, LevelObject, Speed, StartPosition } from "../level/types";
 import {
   applyGroupTransform,
@@ -135,8 +135,8 @@ import {
   type LevelEnd,
   type TriggerSnapshot,
 } from "../triggers/runtime";
-import { NO_INPUT, TICK_DT, type ObjectTable, type PlayerInput, type PlayerState, type Rect, type Sim, type SimEvent, type SimOptions, type SimSnapshot, type SimWave, type StartState, type WaveCause, type WorldShape } from "./types";
-import { TOGGLE_BLOCK_ID } from "./objectData";
+import { NO_INPUT, TICK_DT, type ObjectTable, type PlayerInput, type PlayerState, type Rect, type Sim, type SimCheats, type SimEvent, type SimOptions, type SimSnapshot, type SimWave, type StartState, type WaveCause, type WorldShape } from "./types";
+import { START_POS_ID, TOGGLE_BLOCK_ID } from "./objectData";
 
 /** teleportPlayer's target for a 747: its own exit, key 54 over it. */
 const LINKED_EXIT = -2;
@@ -383,6 +383,16 @@ function sameModeButWave(a: Player, b: Player): boolean {
   );
 }
 
+/**
+ * The start position a run begins from: the one asked for by object index,
+ * none for -1, and the one the game would pick when nothing is asked.
+ */
+function startPositionFor(level: Level, asked: number | undefined): StartPosition | null {
+  if (asked === undefined) return pickStartPosition(level);
+  const o = asked >= 0 ? level.objects[asked] : undefined;
+  return o && o.id === START_POS_ID ? parseStartPosition(o) : null;
+}
+
 export class SimImpl implements Sim, PlayerWorld {
   tick = 0;
   readonly events: SimEvent[] = [];
@@ -513,7 +523,10 @@ export class SimImpl implements Sim, PlayerWorld {
   private motionShared = false;
   private hashDirty = true;
   private hashCache = 0;
-  private readonly noclip: boolean;
+  readonly cheats: SimCheats;
+  noclipHits = 0;
+  /** The tick noclipHits last counted, so a tick with several hits counts once. */
+  private noclipTick = -1;
   /** Practice mode (see SimOptions.practice). Not part of a snapshot or the hash. */
   private practice: boolean;
   /** The secret coins (142), by object index: see coinsTaken and respawnFrom. */
@@ -609,7 +622,7 @@ export class SimImpl implements Sim, PlayerWorld {
     const changes22 = level.header.enable22Changes || kA40Forced;
     // An enabled start position is picked as the level loads and the run
     // starts there; a start given here (a debug jump) outranks it.
-    const startPos = opts.start ? null : pickStartPosition(level);
+    const startPos = opts.start ? null : startPositionFor(level, opts.startPosition);
     this.triggers = new TriggerRuntime(level, this.baseObjs, index, {
       visuals: opts.visuals,
       seed: opts.seed,
@@ -628,7 +641,7 @@ export class SimImpl implements Sim, PlayerWorld {
     this.collSet = this.objs;
     this.objState = new Uint8Array(this.objs.slotCount);
     this.stamp = new Int32Array(this.objs.n);
-    this.noclip = opts.noclip === true;
+    this.cheats = { noclip: opts.noclip === true, jumpHack: false };
     this.practice = opts.practice === true;
     const coins: number[] = [];
     for (let i = 0; i < this.baseObjs.n; i++) {
@@ -1148,6 +1161,15 @@ export class SimImpl implements Sim, PlayerWorld {
 
   spiderJump(p: Player): void {
     this.spiderTeleport(p);
+  }
+
+  get jumpHack(): boolean {
+    return this.cheats.jumpHack;
+  }
+
+  finishNow(): void {
+    if (this.p1.dead || this.p1.finished) return;
+    this.finish(this.p1);
   }
 
   /**
@@ -1705,7 +1727,14 @@ export class SimImpl implements Sim, PlayerWorld {
     // player hit something. [gdp PlayLayer::destroyPlayer :93151 (player 1's
     //  +2074); lockPlayer :159595, from playPlatformerEndAnimationToPos
     //  :92973]
-    if (this.noclip || this.triggers.pendingEnd) return false;
+    if (this.triggers.pendingEnd) return false;
+    if (this.cheats.noclip) {
+      if (this.noclipTick !== this.tick) {
+        this.noclipTick = this.tick;
+        this.noclipHits++;
+      }
+      return false;
+    }
     p.dead = true;
     p.killedBy = object >= 0 ? object : null;
     p.stopDashing();
@@ -2172,19 +2201,17 @@ export class SimImpl implements Sim, PlayerWorld {
 
     // D. Hazards, first met first, against the box the solids left. The first
     // one touched kills. [:465008-465057]
-    if (!this.noclip) {
-      const half = p.hitboxSize() * 0.5;
-      const hx0 = p.x - half;
-      const hy0 = p.y - half;
-      const hx1 = p.x + half;
-      const hy1 = p.y + half;
-      for (let k = 0; k < n; k++) {
-        const i = cand[k];
-        if (o.kind[i] !== K_HAZARD) continue;
-        if (!this.hitsPlayer(i, hx0, hy0, hx1, hy1, p)) continue;
-        this.die(p, i);
-        return;
-      }
+    const half = p.hitboxSize() * 0.5;
+    const hx0 = p.x - half;
+    const hy0 = p.y - half;
+    const hx1 = p.x + half;
+    const hy1 = p.y + half;
+    for (let k = 0; k < n; k++) {
+      const i = cand[k];
+      if (o.kind[i] !== K_HAZARD) continue;
+      if (!this.hitsPlayer(i, hx0, hy0, hx1, hy1, p)) continue;
+      if (this.die(p, i)) return;
+      break;
     }
 
     // E. postCollision, which is where a slope is left. [:465018-465021]

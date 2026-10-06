@@ -45,6 +45,8 @@ export class MusicMixer implements MusicOut {
   /** The proximity factor per channel, which a new song on it keeps. */
   private readonly mods = new Map<number, number>();
   private readonly prepared = new Set<string>();
+  /** The mod menu's speedhack: every channel plays this much faster, so the music keeps up with the level. */
+  private timeScale = 1;
 
   constructor(
     private readonly ctx: BaseAudioContext,
@@ -87,7 +89,7 @@ export class MusicMixer implements MusicOut {
     const length = buffer.duration * 1000;
     // A start kept to the music clock that waited for its decode is that much
     // further in by now; a track looped from its start starts at its start.
-    let at = play.positionMs + (play.synced ? (now - voice.asked) * 1000 * play.rate : 0);
+    let at = play.positionMs + (play.synced ? (now - voice.asked) * 1000 * play.rate * this.timeScale : 0);
     const loopStart = play.loopStartMs > 0 ? play.loopStartMs : 0;
     const loopEnd = play.loopEndMs > 0 ? Math.min(play.loopEndMs, length) : length;
     if (play.loop) {
@@ -99,7 +101,7 @@ export class MusicMixer implements MusicOut {
     }
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
-    source.playbackRate.value = voice.rate;
+    source.playbackRate.value = voice.rate * this.timeScale;
     source.loop = play.loop;
     if (play.loop && (play.loopStartMs > 0 || play.loopEndMs > 0)) {
       source.loopStart = loopStart / 1000;
@@ -115,7 +117,7 @@ export class MusicMixer implements MusicOut {
       // The end and the fade before it are timed at the rate it starts with,
       // as FMOD's delay and fade points are. [FMODAudioEngine::startMusic :70721-70771]
       const stopMs = play.endMs > 0 ? play.endMs : length;
-      const left = (stopMs - at) / voice.rate / 1000;
+      const left = (stopMs - at) / (voice.rate * this.timeScale) / 1000;
       if (play.endMs > 0) source.stop(now + left);
       if (play.fadeOutMs > 0) {
         const from = Math.max(now, now + left - play.fadeOutMs / 1000);
@@ -180,7 +182,16 @@ export class MusicMixer implements MusicOut {
     const voice = this.voices.get(channel);
     if (!voice) return;
     voice.rate = to;
-    if (voice.source) ramp(this.ctx, voice.source.playbackRate, to, over);
+    if (voice.source) ramp(this.ctx, voice.source.playbackRate, to * this.timeScale, over);
+  }
+
+  /** Every channel at `scale` times its own speed, from now. */
+  setTimeScale(scale: number): void {
+    if (scale === this.timeScale) return;
+    this.timeScale = scale;
+    for (const voice of this.voices.values()) {
+      if (voice.source) voice.source.playbackRate.setValueAtTime(voice.rate * scale, this.ctx.currentTime);
+    }
   }
 
   volumeMod(channel: number, mod: number): void {

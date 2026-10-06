@@ -119,6 +119,16 @@ export class Scene {
   particlesEnabled = true;
   /** The shader triggers' screen effects, which the settings screen can turn off. */
   effectsEnabled = true;
+  /** The mod menu's look switches; none of them changes what the player hits. */
+  readonly mods = {
+    hidePlayer: false,
+    noShake: false,
+    noWaveTrail: false,
+    noDeathEffect: false,
+    sameDualColour: false,
+    /** Turns a second the icon's colours go round the colour wheel; 0 is off. */
+    rainbow: 0,
+  };
   /** The circles alive in the level (circleWaves.ts). */
   private readonly waves = new CircleWaves();
   /**
@@ -512,7 +522,10 @@ export class Scene {
     // The circles this tick's step made.
     if (sim.waves.length > 0) {
       const ctx = this.waveContext(sim);
-      for (const w of sim.waves) for (const made of wavesFor(w, ctx)) this.waves.add(made);
+      for (const w of sim.waves) {
+        if (this.mods.noDeathEffect && w.cause === "death") continue;
+        for (const made of wavesFor(w, ctx)) this.waves.add(made);
+      }
     }
     this.spawnTriggerParticles(sim);
   }
@@ -794,8 +807,9 @@ export class Scene {
     this.bindLevelPages();
 
     const centre = this.camera.centre(alpha);
-    this.frameCentreX = centre.x + this.shakeX;
-    this.frameCentreY = centre.y + this.shakeY;
+    const shake = this.mods.noShake ? 0 : 1;
+    this.frameCentreX = centre.x + this.shakeX * shake;
+    this.frameCentreY = centre.y + this.shakeY * shake;
     this.frameAlpha = alpha;
     // The whole level turns about the screen's centre, after the zoom, the
     // scroll and the shake; the interface does not. [gdp GJBaseGameLayer::
@@ -1254,7 +1268,7 @@ export class Scene {
   private drawBands(seconds: number): void {
     const art = this.effects;
     const sim = this.sim;
-    if (!art || !this.batch || !sim) return;
+    if (!art || !this.batch || !sim || this.mods.noWaveTrail || this.mods.hidePlayer) return;
     const quad = art.quad(EFFECT_FRAMES.white);
     if (!quad) return;
     const heads = [this.interpolated(sim.state, this.frameAlpha), sim.state2] as const;
@@ -1290,7 +1304,7 @@ export class Scene {
     const sim = this.sim;
     if (!sim || !this.playerParticles.ready) return 0;
     const visual = this.live?.triggers.visual;
-    if (visual?.hidePlayer || visual?.options.hidePlayer1) return 0;
+    if (visual?.hidePlayer || visual?.options.hidePlayer1 || this.mods.hidePlayer) return 0;
     if (!this.particlesEnabled) return 0;
     const colours = this.colors;
     const strong = playerChannelColours(colours ? colours.iconColour(1) : DEFAULT_ICON_1, colours ? colours.iconColour(2) : DEFAULT_ICON_2);
@@ -1308,7 +1322,7 @@ export class Scene {
   private drawPlayer(alpha: number): void {
     const sim = this.sim;
     if (!sim || !this.batch || !this.player.ready) return;
-    if (this.live?.triggers.visual.hidePlayer) return;
+    if (this.live?.triggers.visual.hidePlayer || this.mods.hidePlayer) return;
     const state = this.interpolated(sim.state, alpha);
     const second = sim.state2;
     // Every frame, not only when the mode changes. The menus and the icon kit
@@ -1322,8 +1336,13 @@ export class Scene {
     // are strengthened copies; only its outline is strengthened, which the
     // renderer works out from the pair. [gdp createPlayer :417905-417930]
     const colours = this.colors;
-    const p1 = colours ? colours.iconColour(1) : { r: 0, g: 255, b: 119 };
-    const p2 = colours ? colours.iconColour(2) : { r: 0, g: 187, b: 255 };
+    let p1 = colours ? colours.iconColour(1) : { r: 0, g: 255, b: 119 };
+    let p2 = colours ? colours.iconColour(2) : { r: 0, g: 187, b: 255 };
+    if (this.mods.rainbow > 0) {
+      const turn = this.wallClock * this.mods.rainbow;
+      p1 = hueColour(turn);
+      p2 = hueColour(turn + 0.5);
+    }
     const seconds = sim.tick / TICK_RATE;
     const options = this.live?.triggers.visual.options;
     if (!options?.hidePlayer1) {
@@ -1336,7 +1355,7 @@ export class Scene {
       // game builds it from the same two lookups in the opposite order.
       // [gdp GJBaseGameLayer's player setup, gd-ida-decomp.cpp:417905-417918
       //  for player 1 and :417963-417976 for player 2]
-      const n = this.player.build(second, p2, p1, seconds);
+      const n = this.mods.sameDualColour ? this.player.build(second, p1, p2, seconds) : this.player.build(second, p2, p1, seconds);
       if (n > 0) this.batch.draw(this.player.data, n);
     }
   }
@@ -1390,6 +1409,19 @@ const WHITE_RGB: Rgb = { r: 255, g: 255, b: 255 };
 
 function isBlack(c: Rgb): boolean {
   return c.r === 0 && c.g === 0 && c.b === 0;
+}
+
+/** A fully bright, fully saturated colour `turn` of the way round the colour wheel. */
+function hueColour(turn: number): Rgb {
+  const h = (((turn % 1) + 1) % 1) * 6;
+  const x = Math.round(255 * (1 - Math.abs((h % 2) - 1)));
+  const sector = Math.floor(h);
+  if (sector === 0) return { r: 255, g: x, b: 0 };
+  if (sector === 1) return { r: x, g: 255, b: 0 };
+  if (sector === 2) return { r: 0, g: 255, b: x };
+  if (sector === 3) return { r: 0, g: x, b: 255 };
+  if (sector === 4) return { r: x, g: 0, b: 255 };
+  return { r: 255, g: 0, b: x };
 }
 
 /** A draw layer's name as the editor shows it: BG, MG, B5 … T4, G, UI, Max. */

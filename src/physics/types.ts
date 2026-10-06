@@ -324,9 +324,25 @@ export interface StartState {
   rotated: boolean;
 }
 
+/**
+ * Switches the mod menu can flip mid-run. None of them is the game's; a run
+ * with any on keeps no progress (see hacks/state.ts).
+ */
+export interface SimCheats {
+  /** Nothing kills the player. */
+  noclip: boolean;
+  /** A fresh press jumps in the air as it would on the ground. */
+  jumpHack: boolean;
+}
+
 export interface SimOptions {
   /** Override the level's start (a debug jump). A start given here also skips the level's start positions. */
   start?: Partial<StartState>;
+  /**
+   * Which start position to begin from, by its object index, or -1 for the
+   * level's own start. Absent, the one the game would pick.
+   */
+  startPosition?: number;
   /** Skip death detection (debug fly-through). */
   noclip?: boolean;
   /** Called on every event; events are also buffered in `sim.events`. */
@@ -426,6 +442,12 @@ export interface Sim {
    * starts at 0 either way.
    */
   readonly startTime: number;
+  /** The mod menu's switches, read every step. */
+  readonly cheats: SimCheats;
+  /** Ticks on which noclip kept the player alive, counted since the sim was made. */
+  readonly noclipHits: number;
+  /** Ends the level now, as reaching its end would; nothing when already over. */
+  finishNow(): void;
   step(p1: PlayerInput, p2?: PlayerInput): void;
   snapshot(): SimSnapshot;
   /** Back to a snapshot exactly, as the autoplayer rewinds. */

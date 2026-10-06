@@ -87,10 +87,13 @@ export class InputState {
   private readonly edges = [0, 0];
   private readonly stepHeld = [false, false];
   private readonly keys = new Set<string>();
+  /** Called each time player 1's button goes down, for a click counter. */
+  onPress: (() => void) | null = null;
 
   attach(target: HTMLElement | Window): void {
     const down = (e: KeyboardEvent) => {
-      if (e.repeat) return;
+      // Typing in a text box is not playing.
+      if (e.repeat || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       this.keys.add(e.code);
       this.sync();
     };
@@ -126,6 +129,7 @@ export class InputState {
     const p2 = this.keys.has("ArrowUp") || this.keys.has("KeyW");
     if (p1 !== this.held) this.edges[0]++;
     if (p2 !== this.held2) this.edges[1]++;
+    if (p1 && !this.held) this.onPress?.();
     this.held = p1;
     this.held2 = p2;
     this.left = this.keys.has("ArrowLeft") || this.keys.has("KeyA");

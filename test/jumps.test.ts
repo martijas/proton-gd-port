@@ -12,6 +12,7 @@ import type { GameMode } from "../src/level/types";
 import { countsAsJump, NO_INPUT, type Sim, type SimEvent } from "../src/physics/types";
 import { Game } from "../src/game/game";
 import { SaveStore } from "../src/save/store";
+import { Mods } from "../src/mods";
 import { emptyLevel, HOLD, type Placed, settle, simOn, stepN } from "./levelKit";
 
 /** The jumps and orbs after `from`, as "tick:type[:detail]". */
@@ -117,7 +118,9 @@ test("the save gains the jumps at a death or a finish, and leaving drops the res
     run,
     eventCursor: 0,
     jumpsPending: 0,
-    audio: { stopLevel: () => undefined },
+    audio: { stopLevel: () => undefined, setMusicSpeed: () => undefined },
+    loop: { timeScale: 1 },
+    mods: new Mods({ getItem: () => null, setItem: () => undefined, removeItem: () => undefined }),
     scene: { useSim: () => undefined },
   }) as unknown as Game;
   const events: SimEvent[] = [];

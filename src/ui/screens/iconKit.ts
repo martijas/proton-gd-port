@@ -286,7 +286,7 @@ export class IconKitScreen implements Screen {
       const id = ids[this.page * PER_PAGE + i];
       if (id === undefined) break;
       const { x, y } = this.cellAt(view, i);
-      const state = availability(this.kind, id, achievements, progress);
+      const state = this.availability(this.kind, id, achievements, progress);
       const locked = state.state !== "unlocked";
       out.push({
         kind: "icon",
@@ -321,7 +321,7 @@ export class IconKitScreen implements Screen {
       if (index >= count) break;
       const { x, y } = this.cellAt(view, i);
       const colour = this.game.strings.playerColour(index);
-      const state = availability(kind, index, achievements, progress);
+      const state = this.availability(kind, index, achievements, progress);
       const locked = state.state !== "unlocked";
       out.push({ kind: "fill", rect: rect(x - 9, y - 9, 18, 18), tint: colour, alpha: locked ? 0.3 : 1 });
       if (locked) out.push({ kind: "sprite", x, y, frame: FRAMES.lockGrey, scale: 0.8, tint: LOCK_TINT, alpha: LOCK_ALPHA });
@@ -329,6 +329,11 @@ export class IconKitScreen implements Screen {
       out.push({ kind: "button", id: `colour:${index}`, rect: rect(x - CELL_PITCH / 2, y - CELL_PITCH / 2, CELL_PITCH, CELL_PITCH), label: { text: "", scale: 0 }, tint: TRANSPARENT });
     }
     return out;
+  }
+
+  /** Whether an icon or colour can be worn: everything can with the mod menu's Unlock All Icons. */
+  private availability(...args: Parameters<typeof availability>): Availability {
+    return this.game.mods.on("unlockIcons") ? { state: "unlocked" } : availability(...args);
   }
 
   /** What to tell the player about something they cannot wear yet. */
@@ -378,7 +383,7 @@ export class IconKitScreen implements Screen {
     }
     if (id.startsWith("icon:")) {
       const icon = Number(id.slice(5));
-      const state = availability(this.kind, icon, achievements, progress);
+      const state = this.availability(this.kind, icon, achievements, progress);
       if (state.state !== "unlocked") {
         this.hint = this.explain(state);
         return true;
@@ -391,7 +396,7 @@ export class IconKitScreen implements Screen {
     if (id.startsWith("colour:")) {
       const index = Number(id.slice(7));
       const kind: RewardKind = this.slot === 1 ? "colour1" : "colour2";
-      const state = availability(kind, index, achievements, progress);
+      const state = this.availability(kind, index, achievements, progress);
       if (state.state !== "unlocked") {
         this.hint = this.explain(state);
         return true;

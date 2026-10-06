@@ -25,6 +25,7 @@ import {
 import { CompleteScreen, PauseScreen, PlayScreen } from "../src/ui/screens/play";
 import { designSize, pointerToUi, viewportFor, VIEW_UNITS_HIGH, VIEW_UNITS_WIDE } from "../src/ui/viewport";
 import { Game } from "../src/game/game";
+import { Mods } from "../src/mods/index";
 import { Camera } from "../src/render/camera";
 import { defaultSave } from "../src/save/schema";
 import { loadObjectTable, builtPath } from "./helpers";
@@ -388,7 +389,7 @@ test("what a death and a finish record", () => {
   // a platformer's deaths keep nothing. Both commit the jumps.
   // [gdp PlayLayer::destroyPlayer :93168, :93198-93216, :93277-93281;
   //  levelComplete :92666-92696, :92772-92858]
-  const recorded = (startPosition: number, state: { dead: boolean; finished: boolean }, p: number, platformer = false, practice = false) => {
+  const recorded = (startPosition: number, state: { dead: boolean; finished: boolean }, p: number, platformer = false, practice = false, saves = true) => {
     const calls: Array<[number, number, boolean, number[]]> = [];
     let commits = 0;
     const run = { id: 3, name: "Level", practice, attempt: 1, jumps: 0, lastPercent: 0, attemptStartedAt: 0, level: { header: { platformer } } };
@@ -397,6 +398,9 @@ test("what a death and a finish record", () => {
       run,
       stack: { push: () => undefined, pop: () => undefined },
       audio: { finishLevel: () => undefined, playerDied: () => undefined },
+      mods: noMods(),
+      runSaves: () => saves,
+      practiceMusic: () => practice,
       commitJumps: () => void commits++,
       recordRun: (r: typeof run, percent: number, coins: readonly number[] = []) => (calls.push([r.id, percent, r.practice, [...coins]]), false),
       runProgress: () => ({ best: 100 }),
@@ -420,6 +424,9 @@ test("what a death and a finish record", () => {
   assert.deepEqual(recorded(-1, dead, p, false, true), { calls: [[3, 42, true, []]], commits: 1, lastPercent: 0 }, "practice leaves the death screen's number alone");
   assert.deepEqual(recorded(-1, dead, 0.99995), { calls: [[3, 99, false, []]], commits: 1, lastPercent: 99 });
   assert.deepEqual(recorded(-1, dead, 1), { calls: [[3, 99, false, []]], commits: 1, lastPercent: 100 }, "kept short of 100");
+  // An attempt a cheat or safe mode was on in records nothing at all.
+  assert.deepEqual(recorded(-1, finished, p, false, false, false).calls, [], "a cheated finish is not kept");
+  assert.deepEqual(recorded(-1, dead, p, false, false, false).calls, [], "nor a cheated death");
 });
 
 test("a replay from the end screen records its own finish", () => {
@@ -437,6 +444,9 @@ test("a replay from the end screen records its own finish", () => {
     run: { id: 3, name: "Level", practice: false, attempt: 1, jumps: 0, lastPercent: 0, attemptStartedAt: 0, level: { header: { platformer: false } } },
     stack: { push: (s: Screen) => void pushed.push(s), pop: () => pushed.pop() },
     audio: { finishLevel: () => undefined },
+    mods: noMods(),
+    runSaves: () => true,
+    practiceMusic: () => false,
     commitJumps: () => undefined,
     fullReset: () => void (sim = unfinished()),
     recordRun: (_run: unknown, percent: number) => (recorded.push(percent), false),
@@ -474,6 +484,7 @@ test("the HUD: the bar and the percentage, and none of it in a platformer", () =
         viewPoint: (_x: number, _y: number, out: [number, number]) => out.fill(0.5),
       },
       ui: { art: { quad: () => null, measure: () => ({ width: 40, height: 16 }) } },
+      mods: noMods(),
       checkpoints: [],
     } as unknown as ConstructorParameters<typeof PlayScreen>[0];
     const widgets = new PlayScreen(game).build(view);
@@ -533,6 +544,7 @@ test("the attempt label, and the end screen's replay starting the visit over", (
       strings: { playerColour: () => ({ r: 255, g: 255, b: 255 }) },
       scene: { player: {}, camera, refreshPlayerPages: () => undefined, useSim: () => undefined, resetInterpolation: () => undefined, playSpawnEffect: () => undefined },
       audio: { startAttempt: () => undefined },
+      mods: noMods(),
       checkpoints: [],
       restart(this: Game) {
         restarts.push({ attempt: run.attempt, jumps: run.jumps, practice: run.practice });
@@ -594,6 +606,11 @@ test("Camera Mode's easing and padding shape the free follow of a ball, not a cu
   assert.ok(Math.abs(at("cube", 1, 1) - (100 + (230 - 100) * 0.025)) < 1e-9, "the cube ignores both");
 });
 
+/** The mod menu with nothing switched on and nowhere to keep it. */
+function noMods(): Mods {
+  return new Mods({ getItem: () => null, setItem: () => undefined, removeItem: () => undefined });
+}
+
 /** A Game with only what restart, respawn and tick touch, around a real restart. */
 function stubGame(level: ReturnType<typeof emptyLevel>) {
   const camera = new Camera();
@@ -624,6 +641,7 @@ function stubGame(level: ReturnType<typeof emptyLevel>) {
       tick: () => undefined,
     },
     audio,
+    mods: noMods(),
     checkpoints: [],
     stack: { ticks: true },
     input: { input: () => NO_INPUT },

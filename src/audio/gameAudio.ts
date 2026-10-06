@@ -235,6 +235,11 @@ export class GameAudio {
     this.engine.setVolumes(settings);
   }
 
+  /** The speedhack's speed for the music, 1 for normal. */
+  setMusicSpeed(scale: number): void {
+    this.mixer.setTimeScale(scale);
+  }
+
   dispose(): void {
     this.mixer.stopAll();
     this.sfxPlayer.stopAll();

@@ -166,16 +166,19 @@ export class PlayScreen implements Screen {
     // [gdp PlayLayer::destroyPlayer :93168, :93199-93203; levelComplete
     //  :92666-92696, :92772-92858]
     const kept = sim.startPosition < 0;
+    // An attempt a cheat or safe mode was on in keeps nothing at all, not
+    // even the attempt itself (mods/state.ts).
+    const saves = this.game.runSaves();
     // A replay from the end screen is a fresh attempt on the same screen.
     if (!sim.state.finished) this.finished = false;
     if (sim.state.finished && !this.finished) {
       this.finished = true;
       this.game.commitJumps();
       const before = this.game.runProgress(run).best;
-      const improved = this.game.recordRun(run, kept ? 100 : 0, kept ? sim.coinsTaken() : []);
-      if (kept) this.game.awardOrbs(run, before, 100);
-      this.game.audio.finishLevel(sim, run.practice);
-      this.game.stack.push(new CompleteScreen(this.game, improved));
+      const improved = saves && this.game.recordRun(run, kept ? 100 : 0, kept ? sim.coinsTaken() : []);
+      if (kept && saves) this.game.awardOrbs(run, before, 100);
+      this.game.audio.finishLevel(sim, this.game.practiceMusic());
+      this.game.stack.push(new CompleteScreen(this.game, improved, saves));
       return;
     }
     if (!sim.state.dead) {
@@ -191,20 +194,21 @@ export class PlayScreen implements Screen {
       //  getCurrentPercentInt :91686-91692]
       const percent = wholePercent(sim.progress());
       if (!run.practice) run.lastPercent = percent;
-      const keeps = kept && !run.level.header.platformer;
+      const keeps = kept && saves && !run.level.header.platformer;
       const kept99 = keeps ? Math.min(99, percent) : 0;
       // A new best beats the normal-mode best as it stood; the orbs are paid
       // for the stretch past it. [gdp PlayLayer::destroyPlayer :93199-93268]
       const before = this.game.runProgress(run).best;
       const newBest = keeps && !run.practice && kept99 > before;
-      this.game.recordRun(run, kept99);
+      if (saves) this.game.recordRun(run, kept99);
       const orbs = keeps ? this.game.awardOrbs(run, before, kept99) : 0;
-      this.game.audio.playerDied(sim, run.practice);
+      this.game.audio.playerDied(sim, this.game.practiceMusic());
       // Starting over by itself, the level shows the pop-up for a new best or
       // for orbs; with the death screen, only for orbs.
       // [gdp PlayLayer::destroyPlayer :93302-93352]
       const auto = this.game.save.get().settings.autoRetry;
-      this.retryDelay = AUTO_RETRY_SECONDS;
+      const mods = this.game.mods;
+      this.retryDelay = mods.on("respawnTime") ? mods.value("respawnTime") : AUTO_RETRY_SECONDS;
       this.orbsPending = false;
       if (orbs > 0 || (auto && newBest)) {
         this.showNewBest(newBest, kept99, orbs, auto);
@@ -255,11 +259,13 @@ export class PlayScreen implements Screen {
     // updateAttempts :92457-92471; setupHasCompleted :106298-106300,
     // :106462-106463]
     const scene = this.game.scene;
+    const mods = this.game.mods;
+    const hud = !mods.on("hideHud");
     const at = this.labelAt;
     scene.viewPoint(run.attemptLabel.x, run.attemptLabel.y, at);
     const sx = at[0] * w;
     const sy = at[1] * h;
-    if (sx > -200 && sx < w + 200) {
+    if (sx > -200 && sx < w + 200 && !mods.on("hideAttempts")) {
       const scale = scene.camera.zoomAt(scene.drawnAlpha);
       out.push(label(art, `Attempt ${run.attempt}`, sx, sy, { scale, alpha: sim.startPosition >= 0 ? TEST_LABEL_ALPHA : undefined }));
     }
@@ -270,7 +276,7 @@ export class PlayScreen implements Screen {
     // [gdp PlayLayer::toggleProgressbar :91596-91670; updateProgressbar
     //  :91522 (not in a platformer), :91569-91572]
     const platformer = run.level.header.platformer;
-    const bar = settings.showProgressBar && !platformer;
+    const bar = settings.showProgressBar && !platformer && hud;
     if (bar) {
       out.push({
         kind: "progress",
@@ -283,14 +289,16 @@ export class PlayScreen implements Screen {
         fill: UI_COLOURS.barNormal,
       });
     }
-    if (settings.showPercentage && !platformer) {
-      const text = `${Math.min(100, wholePercent(progress))}%`;
+    if (settings.showPercentage && !platformer && hud) {
+      const text = mods.on("accuratePercent")
+        ? `${Math.min(100, progress * 100).toFixed(mods.value("accuratePercent"))}%`
+        : `${Math.min(100, wholePercent(progress))}%`;
       out.push(label(art, text, bar ? w / 2 + 110 : w / 2, h - 8, { scale: 0.5, anchorX: bar ? 0 : 0.5 }));
     }
 
-    out.push(...spriteButton(art, "pause", w - 15, h - 15, FRAMES.pause, { alpha: PAUSE_ALPHA, sizeMult: 1.6 }));
+    if (hud && !mods.on("hidePause")) out.push(...spriteButton(art, "pause", w - 15, h - 15, FRAMES.pause, { alpha: PAUSE_ALPHA, sizeMult: 1.6 }));
 
-    if (run.practice) {
+    if (run.practice && hud) {
       // The game's two practice buttons, bottom right: lay a checkpoint, take
       // the last one back. [meas]
       const n = this.game.checkpoints.length;
@@ -327,6 +335,7 @@ export class PlayScreen implements Screen {
 
   onKey(code: string, down: boolean): boolean {
     if (!down) return false;
+    if (code === "Escape" && this.game.mods.on("ignoreEscape")) return true;
     if (code === "Escape" || code === "KeyP") {
       this.game.stack.push(new PauseScreen(this.game));
       return true;
@@ -440,6 +449,8 @@ export class PauseScreen implements Screen {
     if (run?.practice && !run.level.header.platformer) out.push({ kind: "sprite", x: cx - 190, y: cy - 12, frame: FRAMES.practiceText });
 
     out.push(...spriteButton(art, "settings", w - 36, h - 36, FRAMES.options, { scale: 0.75 }));
+    // The mod menu, for a screen with no Tab key. Not the game's.
+    out.push({ kind: "button", id: "mods", rect: rect(PAUSE_INSET + 12, h - PAUSE_INSET - 42, 70, 30), frame: FRAMES.button, label: { text: "Mods", scale: 0.5 } });
 
     // The two sliders along the bottom, each under its name.
     const sliders: Array<{ id: string; text: string; x: number; value: number }> = [
@@ -489,6 +500,10 @@ export class PauseScreen implements Screen {
       } else {
         this.game.enterPractice();
       }
+      return true;
+    }
+    if (id === "mods") {
+      this.game.mods.toggleMenu();
       return true;
     }
     if (id === "settings") {
@@ -549,6 +564,8 @@ export class CompleteScreen implements Screen {
   constructor(
     private readonly game: Game,
     private readonly newBest: boolean,
+    /** False when a cheat or safe mode kept the run from saving. */
+    private readonly saved = true,
   ) {
     this.stats = attemptStats(game);
   }
@@ -578,11 +595,12 @@ export class CompleteScreen implements Screen {
     const lines = [`Attempts: ${this.stats.attempts}`, `Jumps: ${this.stats.jumps}`, `Time: ${clock(this.stats.seconds)}`];
     lines.forEach((line, i) => out.push(label(art, line, cx, cy + 35 - i * 24, { font: "goldFont", scale: 0.8, maxWidth: 150 })));
 
-    if (stars > 0 && !run?.practice) {
+    if (stars > 0 && !run?.practice && this.saved) {
       out.push({ kind: "sprite", x: cx + 120, y: cy + 34, frame: FRAMES.star, scale: 0.9 });
       out.push(label(art, String(stars), cx + 120 - 16, cy + 34, { scale: 0.6, anchorX: 1 }));
     }
     if (this.newBest) out.push({ kind: "sprite", x: cx, y: cy - 42, frame: FRAMES.newBest, scale: 0.55 });
+    if (!this.saved) out.push(label(art, "Not saved: mods were on", cx, cy - 42, { font: "goldFont", scale: 0.6, maxWidth: 380 }));
 
     const phrase = run?.practice ? "Well done... Now try to complete it without any checkpoints!" : this.phrase;
     out.push(label(art, phrase, cx, cy - 68, { scale: art.fit?.("bigFont", phrase, 260, 0.9) ?? 0.6, maxWidth: 380 }));
