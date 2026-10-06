@@ -334,6 +334,75 @@ test("a practice respawn puts back the checkpoint's points and keeps the level t
   assert.equal(sim.triggers.levelTime, 0, "a plain restore puts the clock back");
 });
 
+// --- timers ---------------------------------------------------------------------
+
+test("a Time trigger counts its timer up, stops on its target and spawns; a Time Event fires on the way", () => {
+  // Timer 1 from 0 at speed 1, stopping at 0.5 and spawning group 10; a Time
+  // Event at 0.25 spawns group 11. The port stored a number and never counted.
+  // [gdp GJEffectManager::startTimer :486742-486857, updateTimers
+  //  :482625-482826, runTimerTrigger :488084-488173]
+  const level = withGroups(
+    [
+      { id: 3614, x: 0, y: 300, props: { 80: "1", 470: "1", 473: "0.5", 474: "1", 51: "10" } },
+      { id: 3615, x: 1, y: 300, props: { 80: "1", 473: "0.25", 51: "11" } },
+      marker(2),
+      marker(3),
+    ],
+    { 2: [10], 3: [11] },
+  );
+  const sim = simOn(level);
+  stepN(sim, NO_INPUT, 30);
+  assert.ok(Math.abs(sim.triggers.timerValue(1) - 29 / 240) < 0.01, `counting (${sim.triggers.timerValue(1)})`);
+  assert.deepEqual([count(sim, 2), count(sim, 3)], [0, 0]);
+  stepN(sim, NO_INPUT, 40);
+  assert.deepEqual([count(sim, 2), count(sim, 3)], [0, 1], "the event at 0.25");
+  stepN(sim, NO_INPUT, 60);
+  assert.equal(sim.triggers.timerValue(1), 0.5, "held on the target");
+  assert.deepEqual([count(sim, 2), count(sim, 3)], [1, 1], "the target's spawn, and the event only once");
+  stepN(sim, NO_INPUT, 30);
+  assert.equal(sim.triggers.timerValue(1), 0.5, "stopped");
+});
+
+test("a Time Control pauses and resumes a timer, and a snapshot keeps it all", () => {
+  // Time Control 472 = 1 pauses timer 1 when group 5 is spawned at about
+  // 0.1 s; nothing moves it until the snapshot is restored. [gdp
+  //  activateTimerTrigger :429510-429521, pauseTimer :479898-479914]
+  const level = withGroups(
+    [
+      { id: 3614, x: 0, y: 300, props: { 80: "1", 467: "2", 470: "-1" } },
+      { id: 1268, x: 1, y: 300, props: { 51: "5", 63: "0.1" } },
+      { id: 3617, x: 900, y: 600, props: { 62: "1", 80: "1", 472: "1" } },
+    ],
+    { 2: [5] },
+  );
+  const sim = simOn(level);
+  stepN(sim, NO_INPUT, 2);
+  const snap = sim.snapshot();
+  stepN(sim, NO_INPUT, 60);
+  const paused = sim.triggers.timerValue(1);
+  assert.ok(paused < 2 && paused > 1.85, `counted down from key 467 until the pause (${paused})`);
+  stepN(sim, NO_INPUT, 60);
+  assert.equal(sim.triggers.timerValue(1), paused, "paused");
+  sim.restore(snap);
+  assert.ok(sim.triggers.timerValue(1) > 1.99, "the restore put the timer back");
+  stepN(sim, NO_INPUT, 10);
+  assert.ok(sim.triggers.timerValue(1) < 1.99, "and it runs again");
+});
+
+test("a time warp of 2 runs the level clock at half a 240th a step, the player at a whole one", () => {
+  // Above 1 the game runs more steps to the real second, each a whole 240th
+  // of game time, and the level time and music take the warp's share of it.
+  // [gdp GJBaseGameLayer::getModifiedDelta :430237-430243; update :469724,
+  //  :469772-469774, :469828-469831]
+  const plain = simOn(emptyLevel());
+  const warped = simOn(emptyLevel([{ id: 1935, x: 0, y: 300, props: { 120: "2" } }]));
+  stepN(plain, NO_INPUT, 241);
+  stepN(warped, NO_INPUT, 241);
+  assert.equal(warped.triggers.timeWarp, 2);
+  assert.ok(Math.abs(warped.triggers.levelTime - 241 / 480) < 1e-6, `half speed (${warped.triggers.levelTime})`);
+  assert.equal(warped.state.x, plain.state.x, "the player moves a whole step each tick");
+});
+
 test("the level time stops at the finish, and a respawn starts it again", () => {
   // The game only adds to the level time while +11304 is clear. The end sets
   // it; any reset, a practice respawn included, clears it. The port's clock

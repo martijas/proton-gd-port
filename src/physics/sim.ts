@@ -1252,7 +1252,9 @@ export class SimImpl implements Sim, PlayerWorld {
     // so everything that moves slows by the warp while the music and the
     // level time keep real time. Read at the top of the step, as the game
     // works out the frame's steps before any trigger in them runs. A warp
-    // above 1 would add steps instead, which a tick of this sim cannot hold.
+    // above 1 adds steps instead (the game's loop runs that many more to the
+    // real second), each a whole 240th of game time but only a warp's share
+    // of a 240th of level time and music.
     // [gdp GJBaseGameLayer::getModifiedDelta :430237-430243 (the 240th times
     //  the warp, 0.0041667 a double); update :469746-469774 (v15, v16 = its
     //  sixtieths as a float, v18 as a double), :469807 (the warp, read once)]
@@ -1265,7 +1267,7 @@ export class SimImpl implements Sim, PlayerWorld {
     // for this step's buttons, and a group it moves on the spot (a silent move)
     // is already there for the press. [gdp GJBaseGameLayer::update,
     // gd-ida-decomp.cpp:469846]
-    trig.beginStep(TICK_DT, false, gameDt);
+    trig.beginStep(warp > 1 ? TICK_DT / warp : TICK_DT, false, gameDt);
     // Whatever the spawn queue fired acts before the buttons, as it does
     // inside the game's trigger: an End trigger locks the players where they
     // are, a turn and a Teleport trigger land before this step's move.

@@ -13,7 +13,7 @@ import { AnimSet, type AnimEntity } from "../assets/anims";
 import { IconSet } from "../assets/icons";
 import { PlayerRenderer } from "./player";
 import type { Scenery } from "../assets/scenery";
-import { BACKGROUND_SPEED, BackdropDrift, MIDDLEGROUND_SPEED, SceneryRenderer, groundLineFrame, groundLineScale, type GroundLine } from "./scenery";
+import { BackdropDrift, MIDDLEGROUND_SPEED, SceneryRenderer, groundLineFrame, groundLineScale, type GroundLine } from "./scenery";
 import { uploadTexture } from "../engine/gl/texture";
 import { AtlasSet } from "../assets/atlas";
 import type { ObjectRecord } from "../assets/objectTypes";
@@ -515,8 +515,9 @@ export class Scene {
     const zoom = this.camera.zoom;
     const scenery = this.scenery;
     if (scenery) {
-      this.backgroundDrift.step(after.x - before.x, after.y - before.y, zoom, BACKGROUND_SPEED.x, BACKGROUND_SPEED.y, scenery.backgroundWidth(this.camera));
-      this.middlegroundDrift.step(after.x - before.x, 0, zoom, MIDDLEGROUND_SPEED.x, 0, scenery.middlegroundWidth(zoom));
+      const speeds = sim.triggers.camera;
+      this.backgroundDrift.step(after.x - before.x, after.y - before.y, zoom, speeds.bgSpeedX, speeds.bgSpeedY, scenery.backgroundWidth(this.camera));
+      this.middlegroundDrift.step(after.x - before.x, 0, zoom, speeds.mgSpeedX, 0, scenery.middlegroundWidth(zoom));
     }
     this.trackStreaks(sim);
     // The circles this tick's step made.
@@ -1138,8 +1139,16 @@ export class Scene {
     if (this.live?.triggers.visual.options.hideMiddleground) return;
     const gl2 = this.gl.gl;
     for (const pass of this.scenery.middlegroundPasses) {
-      const offset = this.live?.triggers.camera.mgOffsetY ?? 0;
-      const count = this.scenery.buildMiddleground(this.camera, this.colors, pass.detail, this.middlegroundDrift, offset, this.frameAlpha);
+      const cam = this.live?.triggers.camera;
+      const count = this.scenery.buildMiddleground(
+        this.camera,
+        this.colors,
+        pass.detail,
+        this.middlegroundDrift,
+        cam?.mgOffsetY ?? 0,
+        this.frameAlpha,
+        cam?.mgSpeedY ?? MIDDLEGROUND_SPEED.y,
+      );
       if (count === 0) continue;
       gl2.activeTexture(gl2.TEXTURE0 + UPLOAD_UNIT);
       gl2.bindTexture(gl2.TEXTURE_2D, pass.texture);

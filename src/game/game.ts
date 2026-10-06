@@ -817,7 +817,11 @@ export class Game {
     const mods = this.mods;
     const inLevel = this.sim !== null;
     const speed = inLevel ? mods.speed : 1;
-    this.loop.timeScale = speed;
+    // A time warp above 1 runs more steps to the real second, each a whole
+    // 240th; below 1 the steps keep coming and the sim shrinks them.
+    // [gdp GJBaseGameLayer::getModifiedDelta :430237-430243]
+    const warp = this.sim?.triggers.timeWarp ?? 1;
+    this.loop.timeScale = speed * Math.max(1, warp);
     this.audio?.setMusicSpeed(mods.on("speedhackMusic") ? speed : 1);
     const settings = this.save.get().settings;
     this.scene.particlesEnabled = settings.particles && !mods.on("noParticles");

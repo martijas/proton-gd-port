@@ -563,6 +563,56 @@ interface CountListener {
 }
 
 /**
+ * How a timer runs, beside its value (TimerItem): a Time trigger (3614) sets
+ * it all, a Time Control (3617) only `running`. A timer an Item Edit makes
+ * stands still at a speed of 1. [gdp GJEffectManager::startTimer
+ *  :486742-486857; updateTimer :486903-486908]
+ */
+interface TimerRun {
+  /** Item +16: counting (key 471 unset, or a resume). */
+  running: boolean;
+  /** Key 470: what each second of game time adds. */
+  speed: number;
+  /** Key 473, and key 474: stop there, set to it, and spawn `group`. */
+  target: number;
+  stopAtTarget: boolean;
+  /** Key 469: count real time through a time warp. */
+  ignoreWarp: boolean;
+  /** Key 51, read through the remap in force when the Time trigger fired. */
+  group: number;
+  spawner: number;
+  remap: readonly number[];
+}
+
+/**
+ * A Time Event (3615) watching a timer cross key 473 the way its speed
+ * runs. `last` starts at 0, not at the timer's value, so a timer already
+ * past the mark fires it on the next step. [gdp GJEffectManager::
+ * runTimerTrigger :488084-488173 (+4 zeroed); updateTimers :482766-482819]
+ */
+interface TimerWatch {
+  timer: number;
+  target: number;
+  group: number;
+  /** Key 475: stays after firing. */
+  multi: boolean;
+  last: number;
+  spawner: number;
+  remap: readonly number[];
+}
+
+const IDLE_TIMER: TimerRun = {
+  running: false,
+  speed: 1,
+  target: 0,
+  stopAtTarget: false,
+  ignoreWarp: false,
+  group: 0,
+  spawner: 0,
+  remap: [],
+};
+
+/**
  * The game events the sim raises, by the game's numbers.
  * [gdp GJBaseGameLayer::gameEventToString :428543ff: 62 and 63 :428739-428744,
  *  69-74 :428760-428777]
@@ -687,6 +737,18 @@ interface CameraState {
   mgOffsetY: number;
   mgOffsetTween: CameraTween | null;
   /**
+   * The background's and middleground's share of the camera's move (+692,
+   * +696; +700, +704): set by the BG Speed (3606) and MG Speed (3612)
+   * triggers' keys 143 and 144, back to 0.1 both ways and 0.3 across and 0.5
+   * up for a value past 999, and every run starts at those.
+   * [gdp GJBaseGameLayer::updateBGArtSpeed :430921-430942; updateMGArtSpeed
+   *  :430959-430972; resetLevelVariables :462922-462923]
+   */
+  bgSpeedX: number;
+  bgSpeedY: number;
+  mgSpeedX: number;
+  mgSpeedY: number;
+  /**
    * Camera Mode keys 113 and 114, when its key 112 says to edit them (a portal
    * can carry them too): the follow's easing, clamped 1..40, and the padding,
    * clamped 0..1. The camera's free follow reads them (render/camera.ts).
@@ -745,6 +807,10 @@ function newCamera(levelTop: number, levelEnd: number | null, minLeft: number | 
     leadSnap: 0,
     mgOffsetY: 0,
     mgOffsetTween: null,
+    bgSpeedX: 0.1,
+    bgSpeedY: 0.1,
+    mgSpeedX: 0.3,
+    mgSpeedY: 0.5,
     followDivisor: 10,
     padding: 0.5,
     minLeft,
@@ -865,6 +931,8 @@ export interface TriggerSnapshot {
   spawns: SpawnAction[];
   items: Map<number, number>;
   timers: Map<number, number>;
+  timerRuns: Map<number, TimerRun>;
+  timerWatches: TimerWatch[];
   countListeners: CountListener[];
   eventListeners: readonly EventListener[];
   eventStamps: ReadonlyMap<string, number>;
@@ -960,6 +1028,10 @@ export class TriggerRuntime {
   private spawns: SpawnAction[] = [];
   private items = new Map<number, number>();
   private timers = new Map<number, number>();
+  /** How each timer a Time trigger started runs; a timer missing here stands still. */
+  private timerRuns = new Map<number, TimerRun>();
+  /** Armed Time Event triggers, oldest first. */
+  private timerWatches: TimerWatch[] = [];
   /** Armed Count triggers, oldest first. */
   private countListeners: CountListener[] = [];
   /** The Event triggers listening, oldest first (see EventListener). */
@@ -1306,6 +1378,8 @@ export class TriggerRuntime {
     this.spawns = this.spawns.map((s) => ({ ...s }));
     this.items = new Map(this.items);
     this.timers = new Map(this.timers);
+    this.timerRuns = new Map(this.timerRuns);
+    this.timerWatches = this.timerWatches.map((w) => ({ ...w }));
     this.countListeners = this.countListeners.map((l) => ({ ...l }));
     this.eventStamps = new Map(this.eventStamps);
     if (this.yHistory) this.yHistory = this.yHistory.slice();
@@ -1339,6 +1413,8 @@ export class TriggerRuntime {
       spawns: this.spawns,
       items: this.items,
       timers: this.timers,
+      timerRuns: this.timerRuns,
+      timerWatches: this.timerWatches,
       countListeners: this.countListeners,
       eventListeners: this.eventListeners,
       eventStamps: this.eventStamps,
@@ -1400,6 +1476,8 @@ export class TriggerRuntime {
     this.spawns = s.spawns;
     this.items = s.items;
     this.timers = s.timers;
+    this.timerRuns = s.timerRuns;
+    this.timerWatches = s.timerWatches;
     this.countListeners = s.countListeners;
     this.eventListeners = s.eventListeners;
     this.eventStamps = s.eventStamps as Map<string, number>;
@@ -1596,6 +1674,7 @@ export class TriggerRuntime {
    * [gdp GJBaseGameLayer::update, gd-ida-decomp.cpp:469890-469893]
    */
   stepMoves(dt: number, playerDx: number, playerDy: number, cameraDx: number, cameraDy: number, playerY: number): void {
+    if (this.timers.size > 0) this.stepTimers(dt);
     if (this.commands.length > 0) this.stepCommands(dt, playerDx, playerDy, cameraDx, cameraDy, playerY);
     if (this.areas.length > 0 || this.areaGroups.length > 0) this.stepAreas(dt);
     if (this.visual.shakeRemaining > 0) {
@@ -3164,6 +3243,22 @@ export class TriggerRuntime {
       case 1935:
         this.timeWarp = Math.min(2, Math.max(0.1, num(spec, 120, 1)));
         return;
+
+      // --- scenery ---
+      case 3606: {
+        const x = num(spec, 143, 0);
+        const y = num(spec, 144, 0);
+        this.camera.bgSpeedX = Math.abs(x) > 999 ? 0.1 : x;
+        this.camera.bgSpeedY = Math.abs(y) > 999 ? 0.1 : y;
+        return;
+      }
+      case 3612: {
+        const x = num(spec, 143, 0);
+        const y = num(spec, 144, 0);
+        this.camera.mgSpeedX = Math.abs(x) > 999 ? 0.3 : x;
+        this.camera.mgSpeedY = Math.abs(y) > 999 ? 0.5 : y;
+        return;
+      }
       case 1917:
         this.playerReversed = true;
         return;
@@ -3199,9 +3294,23 @@ export class TriggerRuntime {
         //  PlayLayer::activateEndTrigger :86727-86731]
         return;
       case 3614:
-      case 3617:
-        this.timers.set(spec.target || 0, num(spec, 10));
+        this.startTimer(spec, remap);
         return;
+      case 3615:
+        this.watchTimer(spec, remap);
+        return;
+      case 3617: {
+        // Key 472: 0 resumes, 1 pauses, anything else does nothing; a timer
+        // no Time trigger or Item Edit has made is left alone.
+        // [gdp GJBaseGameLayer::activateTimerTrigger :429510-429521;
+        //  pauseTimer :479898-479914, resumeTimer :479931-479947]
+        const id = clampItemId(int(spec, 80));
+        const mode = int(spec, 472);
+        if ((mode !== 0 && mode !== 1) || !this.timers.has(id)) return;
+        this.fork();
+        this.timerRuns.set(id, { ...(this.timerRuns.get(id) ?? IDLE_TIMER), running: mode === 0 });
+        return;
+      }
       case 3604:
         this.armEvent(spec, remap);
         return;
@@ -4446,6 +4555,11 @@ export class TriggerRuntime {
     return this.items.get(clampItemId(id)) ?? 0;
   }
 
+  /** A timer's value in seconds, 0 for one that does not exist. */
+  timerValue(id: number): number {
+    return this.timers.get(clampItemId(id)) ?? 0;
+  }
+
   /**
    * Sets an item's count, and fires every armed Count trigger on that item the
    * change reaches or crosses from either side — nearest number first in the
@@ -4486,6 +4600,91 @@ export class TriggerRuntime {
   private setTimer(id: number, value: number): void {
     this.fork();
     this.timers.set(clampItemId(id), Math.min(MAX_TIMER_VALUE, Math.max(-MAX_TIMER_VALUE, value)));
+  }
+
+  /**
+   * Time (3614): sets how timer key 80 runs, and its value to key 467 unless
+   * the timer already exists and key 468 says to keep it. Running unless key
+   * 471. [gdp GJBaseGameLayer::activateTimerTrigger :429522-429537;
+   *  GJEffectManager::startTimer :486742-486857; the keys,
+   *  TimerTriggerGameObject::customObjectSetup :300944-300978]
+   */
+  private startTimer(spec: TriggerSpec, remap: Remap): void {
+    const id = clampItemId(int(spec, 80));
+    this.fork();
+    if (!this.timers.has(id) || !flag(spec, 468)) this.timers.set(id, num(spec, 467));
+    this.timerRuns.set(id, {
+      running: !flag(spec, 471),
+      speed: num(spec, 470),
+      target: num(spec, 473),
+      stopAtTarget: flag(spec, 474),
+      ignoreWarp: flag(spec, 469),
+      group: this.grp(spec.target),
+      spawner: spec.index,
+      remap: flatten(remap),
+    });
+  }
+
+  /** Time Event (3615): arms a watch on timer key 80. [gdp activateTimerTrigger :429499-429509] */
+  private watchTimer(spec: TriggerSpec, remap: Remap): void {
+    this.fork();
+    this.timerWatches = [
+      ...this.timerWatches,
+      {
+        timer: clampItemId(int(spec, 80)),
+        target: num(spec, 473),
+        group: this.grp(spec.target),
+        multi: flag(spec, 475),
+        last: 0,
+        spawner: spec.index,
+        remap: flatten(remap),
+      },
+    ];
+  }
+
+  /**
+   * One step of every timer, before the moves: a running one adds the step's
+   * game time times its speed, and stops on its target if it has one; then
+   * each timer's watches see whether it crossed theirs.
+   * [gdp GJBaseGameLayer::update :469890 → GJEffectManager::updateTimers
+   *  :482625-482826]
+   */
+  private stepTimers(dt: number): void {
+    this.fork();
+    // The ids as they stand now: a timer a spawn starts waits for the next step.
+    for (const id of [...this.timers.keys()]) {
+      const run = this.timerRuns.get(id) ?? IDLE_TIMER;
+      const before = this.timers.get(id) ?? 0;
+      if (run.running) {
+        // The game passes the warp along beside the step; dividing it back
+        // out for key 469 is this port's reading of it. [guess]
+        const step = run.ignoreWarp && this.timeWarp !== 1 ? dt / this.timeWarp : dt;
+        const now = before + step * run.speed;
+        const t = run.target;
+        if (run.stopAtTarget && ((before < t && now >= t) || (before > t && now <= t))) {
+          this.timers.set(id, t);
+          this.timerRuns.set(id, { ...run, running: false });
+          if (run.group > 0) this.spawnGroup(run.group, run.spawner, false, 0, 0, unflatten(run.remap));
+        } else {
+          this.timers.set(id, now);
+        }
+      }
+      if (this.timerWatches.length > 0) this.checkTimerWatches(id);
+    }
+  }
+
+  private checkTimerWatches(id: number): void {
+    const speed = (this.timerRuns.get(id) ?? IDLE_TIMER).speed;
+    let spent: Set<TimerWatch> | null = null;
+    for (const w of this.timerWatches.slice()) {
+      if (w.timer !== id) continue;
+      const now = this.timers.get(id) ?? 0;
+      const crossed = (w.last < w.target && now >= w.target && speed > 0) || (w.last > w.target && now <= w.target && speed < 0);
+      if (crossed && !w.multi) (spent ??= new Set()).add(w);
+      else w.last = now;
+      if (crossed) this.spawnGroup(w.group, w.spawner, false, 0, 0, unflatten(w.remap));
+    }
+    if (spent) this.timerWatches = this.timerWatches.filter((w) => !spent.has(w));
   }
 
   /**
@@ -4673,6 +4872,7 @@ export class TriggerRuntime {
       this.spawns.length === 0 &&
       this.items.size === 0 &&
       this.timers.size === 0 &&
+      this.timerWatches.length === 0 &&
       this.onDeath.length === 0 &&
       this.countListeners.length === 0 &&
       this.eventListeners.length === 0 &&
@@ -4724,6 +4924,8 @@ export class TriggerRuntime {
     for (const [id, n] of this.items) h = Math.imul(h ^ id ^ (n * 16), 0x01000193);
     // An Item Compare reads timers and an Item Edit writes them.
     for (const [id, t] of this.timers) h = Math.imul(h ^ id ^ (t * 1000), 0x01000193);
+    for (const [id, r] of this.timerRuns) h = Math.imul(h ^ id ^ (r.running ? 0x10000 : 0), 0x01000193);
+    for (const w of this.timerWatches) h = Math.imul(h ^ w.timer ^ (w.last * 1000), 0x01000193);
     // Follow Player Y with a delay reads player 1's y from up to two seconds
     // back, so two runs standing in the same place can still part later.
     if (this.yHistory) {

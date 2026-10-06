@@ -18,8 +18,8 @@ import { VIEW_UNITS_HIGH, VIEW_UNITS_WIDE } from "../ui/viewport";
 /**
  * How far the background and the middleground move across the screen for
  * each unit the camera's centre moves, at a zoom of 1: what every run starts
- * with. The BG Speed and MG Speed triggers (3606, 3612) change them, which
- * this port does not run yet.
+ * with, before a BG Speed or MG Speed trigger (3606, 3612) changes them
+ * (triggers/runtime.ts CameraState.bgSpeedX and the rest).
  * [gdp GJBaseGameLayer::resetLevelVariables :462922-462923 →
  *  updateBGArtSpeed(0.1, 0.1) :430921-430943, updateMGArtSpeed(0.3, 0.5)
  *  :430959-430972]
@@ -119,11 +119,11 @@ export function middlegroundScale(zoom: number): number {
 /**
  * Where the middleground's foot is on the screen, from the screen's bottom:
  * its base plus the MG trigger's offset, carried by half the zoom's change,
- * less half the camera's height in the level (`bottom`, the view's foot in
- * the game's y). [gdp updateCameraBGArt :431145 (v30, the not-editor branch)]
+ * less the camera's height in the level (`bottom`, the view's foot in the
+ * game's y) times the middleground's up speed `s`. [gdp updateCameraBGArt
+ * :431149 (v30, the not-editor branch; v20 the speed, +704)]
  */
-export function middlegroundFoot(offsetY: number, zoom: number, bottom: number): number {
-  const s = MIDDLEGROUND_SPEED.y;
+export function middlegroundFoot(offsetY: number, zoom: number, bottom: number, s: number = MIDDLEGROUND_SPEED.y): number {
   return (MIDDLEGROUND_BASE_Y + offsetY) * (1 - s + zoom * s) - bottom * s;
 }
 
@@ -299,11 +299,11 @@ export class SceneryRenderer {
   /**
    * One pass of the middleground: a row of tiles standing on the screen,
    * scaled with the zoom, moved across by `drift` and placed up by
-   * middlegroundFoot with the MG trigger's `offsetY`. These are the
-   * silhouettes along the bottom of the screen, not a second sky.
-   * `alpha` is the frame's place between ticks.
+   * middlegroundFoot with the MG trigger's `offsetY` and the up speed
+   * `speedY`. These are the silhouettes along the bottom of the screen, not a
+   * second sky. `alpha` is the frame's place between ticks.
    */
-  buildMiddleground(camera: Camera, colors: ColorTable, detail: boolean, drift: BackdropDrift, offsetY: number, alpha = 1): number {
+  buildMiddleground(camera: Camera, colors: ColorTable, detail: boolean, drift: BackdropDrift, offsetY: number, alpha = 1, speedY: number = MIDDLEGROUND_SPEED.y): number {
     const mg = this.middleground;
     this.count = 0;
     if (!mg) return 0;
@@ -316,7 +316,7 @@ export class SceneryRenderer {
     const width = mg.width * scale;
     const height = (detail ? mg.detailHeight : mg.height) * scale;
     const x = left + drift.x / zoom;
-    const foot = bottom + middlegroundFoot(offsetY, zoom, bottom + GAME_FLOOR) / zoom;
+    const foot = bottom + middlegroundFoot(offsetY, zoom, bottom + GAME_FLOOR, speedY) / zoom;
     const first = Math.floor((view.x0 - x) / width);
     const last = Math.ceil((view.x1 - x) / width);
     const tint = colors.get(detail ? CHANNEL.MIDDLEGROUND_2 : CHANNEL.MIDDLEGROUND);

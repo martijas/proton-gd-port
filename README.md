@@ -764,10 +764,8 @@ of its own (37) in `PlayLayer::addObject` (IDA:90320-90345).
 **What the boomlings notes leave open.** A moving solid collides as a static
 block where it now stands, so a squeeze under one is approximate: the game's
 moving-object branch of the collision is one long function that waits for a
-port of the whole. The Touch trigger (1595), Advanced Follow (3016), the area
-triggers (3006-3015) and the physics half of the time warp are not built,
-which is why Dash's 0.2 warp at x 4535 plays at full speed; `npm run triggers`
-counts these. The Event trigger hears the buttons and pickups but not the
+port of the whole. Advanced Follow (3016) and the area Fade and Tint are not
+built; `npm run triggers` counts these. The Event trigger hears the buttons and pickups but not the
 landings, orbs and pads the tower floors also listen for. Ice and the slope
 and boost slides still use a measured ramp. `data/ref/boomlings-notes.md`
 lists the rest under its status.
