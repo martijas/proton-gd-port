@@ -72,6 +72,8 @@ export const MODS: readonly ModDef[] = [
   { id: "noDeathEffect", label: "No Death Effect", window: "player", kind: "toggle", tip: "No ring when you die." },
   { id: "noRespawnFlash", label: "No Respawn Flash", window: "player", kind: "toggle", tip: "No rings when you start over." },
   { id: "noWaveTrail", label: "No Wave Trail", window: "player", kind: "toggle", tip: "The wave leaves no trail." },
+  { id: "noTrail", label: "No Trail", window: "player", kind: "toggle", tip: "Your icon leaves no streak behind it." },
+  { id: "alwaysTrail", label: "Always Trail", window: "player", kind: "toggle", tip: "Your icon's streak never switches off." },
   { id: "sameDualColour", label: "Same Dual Colour", window: "player", kind: "toggle", tip: "Both icons in a dual wear your colours the same way round." },
   {
     id: "rainbowIcon",

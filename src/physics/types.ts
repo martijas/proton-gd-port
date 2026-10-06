@@ -183,7 +183,18 @@ export interface PlayerState {
    * held, and not dashing. Flying players take rings only at the press.
    */
   orbReady: boolean;
+  /**
+   * The streak (the CCMotionStreak ribbon): STREAK_OFF, STREAK_ON, or
+   * STREAK_SOFT_OFF, which the streaks that ignore a soft stop (5 and 6)
+   * still lay. The ribbon follows it; nothing in the physics reads it.
+   */
+  streak?: number;
 }
+
+/** PlayerState.streak. [gdp PlayerObject::deactivateStreak :147767-147784; setupStreak :160750-160757 (+1817)] */
+export const STREAK_OFF = 0;
+export const STREAK_ON = 1;
+export const STREAK_SOFT_OFF = 2;
 
 export interface SimEvent {
   tick: number;

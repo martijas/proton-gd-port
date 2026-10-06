@@ -830,6 +830,8 @@ export class Game {
     look.hidePlayer = mods.on("hidePlayer");
     look.noShake = mods.on("noShake");
     look.noWaveTrail = mods.on("noWaveTrail");
+    look.noTrail = mods.on("noTrail");
+    look.alwaysTrail = mods.on("alwaysTrail");
     look.noDeathEffect = mods.on("noDeathEffect");
     look.sameDualColour = mods.on("sameDualColour");
     look.rainbow = mods.on("rainbowIcon") ? mods.value("rainbowIcon") : 0;

@@ -667,9 +667,9 @@ constraint that shapes the rest of this section.
   are written in the plist's field names rather than the level string's, so
   they are converted to the one definition the emitter runs. The settings
   screen's Particles switch turns them off, which it previously did nothing
-  with. The ribbon in `trail.ts` is the game's CCMotionStreak, kept for when
-  the port lays it as `activateStreak` does; the wave's band and the Ghost
-  Trail are other things (`hardStreak.ts`, `ghostTrail.ts`).
+  with. The ribbon in `trail.ts` is the game's CCMotionStreak, laid when
+  `activateStreak` would lay it; the wave's band and the Ghost Trail are
+  other things (`hardStreak.ts`, `ghostTrail.ts`).
 
 Found while doing it: the per-frame gather emitted a sprite twice when it was
 wide enough to sit in two of the visible columns — invisible on an opaque
@@ -743,12 +743,11 @@ for those systems; and while a shader layer's range is 2-7 the game adds them
 to its other object layer (`claimParticle`, IDA:431679-431681), which is not
 done here. A B1 gradient with z order 1 or more sits over the player's own
 particles in the game and under them here. The streak, the CCMotionStreak
-ribbon, never comes on here; the game's comes on for pads, orbs, dashes, the
-ship, the UFO, the swing and the wave, under its band, and goes off on
-landing (the callers of `PlayerObject::activateStreak` and
-`deactivateStreak`). The wave's band pulses with the music in the game
-(`PlayerObject::update`, IDA:161151-161153); the port has no metering and
-holds it at the resting value, 1.24 times its width. The band's last
+ribbon, comes on for pads, orbs, gravity flips and the flying modes and goes
+off on the landing, as the game's does; the icon kit has no streak tab yet,
+so it is always the first of the seven, its points are laid each tick
+rather than each frame, and streak 6's repeating texture is stretched. The
+band's last
 segment, which the game draws as a general four-cornered polygon, is drawn
 as the nearest parallelogram, a sliver different under the player. A Ghost
 Trail turned on before a dual starts gives player 2 none in the game

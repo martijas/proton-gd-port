@@ -136,7 +136,7 @@ import {
   type LevelEnd,
   type TriggerSnapshot,
 } from "../triggers/runtime";
-import { NO_INPUT, TICK_DT, type ObjectTable, type PlayerInput, type PlayerState, type Rect, type Sim, type SimCheats, type SimEvent, type SimOptions, type SimSnapshot, type SimWave, type StartState, type WaveCause, type WorldShape } from "./types";
+import { NO_INPUT, STREAK_ON, STREAK_SOFT_OFF, TICK_DT, type ObjectTable, type PlayerInput, type PlayerState, type Rect, type Sim, type SimCheats, type SimEvent, type SimOptions, type SimSnapshot, type SimWave, type StartState, type WaveCause, type WorldShape } from "./types";
 import { START_POS_ID, TOGGLE_BLOCK_ID } from "./objectData";
 
 /** teleportPlayer's target for a 747: its own exit, key 54 over it. */
@@ -778,6 +778,14 @@ export class SimImpl implements Sim, PlayerWorld {
     //  resetLevelVariables :463007, PlayLayer::resetLevel :106011]
     this.triggers.pendingGround = null;
     this.resetCamera();
+    // A reset stops the streak softly, and the level's start, which the game
+    // sets while it is resetting, flips no streak on; a flying mode's toggle
+    // still does. [gdp resetObject :153629, :153668-153673; flipGravity
+    //  :151183-151185 (+10957, set through the reset)]
+    for (const q of this.p2 ? [p, this.p2] : [p]) {
+      q.streak = q.isFlying ? STREAK_ON : STREAK_SOFT_OFF;
+      q.streakArmed = false;
+    }
   }
 
   /**
@@ -3659,6 +3667,8 @@ export class SimImpl implements Sim, PlayerWorld {
    * [gdp PlayerObject::startDashing, gd-ida-decomp.cpp:148581-148697]
    */
   private startDash(p: Player, i: number): void {
+    // [gdp startDashing :148588-148589]
+    if (!p.isWave) p.deactivateStreak(false);
     p.dashing = true;
     p.dashClock = p.clock;
     p.lastLandTick = -1e9;

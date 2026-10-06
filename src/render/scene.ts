@@ -18,7 +18,8 @@ import { uploadTexture } from "../engine/gl/texture";
 import { AtlasSet } from "../assets/atlas";
 import type { ObjectRecord } from "../assets/objectTypes";
 import type { GameMode, Level } from "../level/types";
-import { TICK_RATE, type PlayerState, type Sim } from "../physics/types";
+import { STREAK_ON, STREAK_SOFT_OFF, TICK_RATE, type PlayerState, type Sim } from "../physics/types";
+import { streakHead, streakStyle, TrailRenderer } from "./trail";
 import { MINI_SCALE } from "../physics/constants";
 import { lerp, lerpAngle } from "../engine/math";
 import { Camera, corridorArt, turnPoint } from "./camera";
@@ -104,6 +105,13 @@ export class Scene {
   private effectsTexture: WebGLTexture | null = null;
   /** The wave's band, one per player. */
   readonly bands = [new HardStreak(), new HardStreak()] as const;
+  /** The streak, one per player (trail.ts). */
+  readonly trails = [new TrailRenderer(), new TrailRenderer()] as const;
+  /** Which of the seven streaks the player wears. The icon kit has no streak tab yet, so it is the first. */
+  streakId = 1;
+  /** Each streak's colour, and the blend, as the last tick left them. */
+  private readonly trailColours: [Rgb, Rgb] = [DEFAULT_ICON_2, DEFAULT_ICON_1];
+  private streakAdditive = true;
   /** The Ghost Trail's copies of both players. */
   readonly ghosts = new GhostTrail();
   /** The bands' blend, made when the level's first tick sees the player's colours. */
@@ -124,6 +132,8 @@ export class Scene {
     hidePlayer: false,
     noShake: false,
     noWaveTrail: false,
+    noTrail: false,
+    alwaysTrail: false,
     noDeathEffect: false,
     sameDualColour: false,
     /** Turns a second the icon's colours go round the colour wheel; 0 is off. */
@@ -678,14 +688,26 @@ export class Scene {
     const icon2 = colours ? colours.iconColour(2) : DEFAULT_ICON_2;
     this.streakBlend ??= new StreakBlend(isBlack(icon1));
     const additive = this.streakBlend.follow(visual.options.streakAdditive);
+    this.streakAdditive = additive;
     const view = this.camera.coverBounds(0);
     const players = [sim.state, sim.state2] as const;
+    const style = streakStyle(this.streakId);
     for (let i = 0; i < 2; i++) {
       const p = players[i];
       // Player 2 wears the pair the other way round.
       const own = i === 0 ? icon1 : icon2;
       const other = i === 0 ? icon2 : icon1;
       const hidden = visual.hidePlayer || (i === 0 ? visual.options.hidePlayer1 : visual.options.hidePlayer2);
+      // The streak takes colour 2, unless it is one of the white ones.
+      // [gdp PlayerObject::updateGlowColor :146213-146216 (+1816)]
+      this.trailColours[i] = other;
+      const trail = this.trails[i];
+      if (p) {
+        const on = p.streak === STREAK_ON || (p.streak === STREAK_SOFT_OFF && style.ignoresSoftStop) || this.mods.alwaysTrail;
+        trail.track(streakHead(p, p.mini ? MINI_SCALE : 1), seconds, on && !p.dead && !hidden && !this.mods.noTrail, style);
+      } else if (!trail.empty) {
+        trail.track({ x: 0, y: 0 }, seconds, false, style);
+      }
       const band = this.bands[i];
       if (p) {
         band.track(
@@ -715,6 +737,7 @@ export class Scene {
     this.prevPose.has = false;
     this.afterlife = 0;
     for (const band of this.bands) band.reset();
+    for (const trail of this.trails) trail.reset();
     this.ghosts.reset();
     this.playerParticles.reset();
     this.list?.reset();
@@ -1277,7 +1300,9 @@ export class Scene {
   private drawBands(seconds: number): void {
     const art = this.effects;
     const sim = this.sim;
-    if (!art || !this.batch || !sim || this.mods.noWaveTrail || this.mods.hidePlayer) return;
+    if (!art || !this.batch || !sim || this.mods.hidePlayer) return;
+    this.drawTrails(art, sim, seconds);
+    if (this.mods.noWaveTrail) return;
     const quad = art.quad(EFFECT_FRAMES.white);
     if (!quad) return;
     const heads = [this.interpolated(sim.state, this.frameAlpha), sim.state2] as const;
@@ -1287,6 +1312,28 @@ export class Scene {
       const head = heads[i];
       const n = band.build(quad, seconds, this.pulse, head ? { x: head.x, y: head.y } : undefined);
       if (n > 0) this.batch.draw(band.data, n);
+    }
+  }
+
+  /**
+   * The streaks, under the bands. The width is the streak's stroke times the
+   * player's size, and 0.8 of that in the wave.
+   * [gdp PlayerObject::toggleDartMode :153086-153092 (setStroke)]
+   */
+  private drawTrails(art: EffectArt, sim: Sim, seconds: number): void {
+    if (!this.batch) return;
+    const style = streakStyle(this.streakId);
+    const quad = art.quad(style.frame);
+    if (!quad) return;
+    const players = [sim.state, sim.state2] as const;
+    for (let i = 0; i < 2; i++) {
+      const trail = this.trails[i];
+      if (trail.empty) continue;
+      const p = players[i];
+      const width = style.stroke * (p?.mini ? MINI_SCALE : 1) * (p?.mode === "wave" ? 0.8 : 1);
+      const colour = style.white ? WHITE : this.trailColours[i];
+      const n = trail.build(quad, colour, seconds, this.streakAdditive, width, style.fade);
+      if (n > 0) this.batch.draw(trail.data, n);
     }
   }
 
@@ -1414,6 +1461,7 @@ export class Scene {
 /** The icon colours a scene with no colour table falls back on: the game's defaults. */
 const DEFAULT_ICON_1: Rgb = { r: 0, g: 255, b: 119 };
 const DEFAULT_ICON_2: Rgb = { r: 0, g: 187, b: 255 };
+const WHITE: Rgb = { r: 255, g: 255, b: 255 };
 const WHITE_RGB: Rgb = { r: 255, g: 255, b: 255 };
 
 function isBlack(c: Rgb): boolean {

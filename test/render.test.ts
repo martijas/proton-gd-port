@@ -8,7 +8,7 @@ import { frameQuad, quadUv } from "../src/render/frameQuad";
 import { ColorTable, applyHsv, hsvToRgb, lightBackgroundColor, rgbToHsv } from "../src/render/colors";
 import { BACKGROUND_SPEED, BackdropDrift, SceneryRenderer, backdropPlacement, backgroundScale, middlegroundBaseY, middlegroundFoot, middlegroundScale } from "../src/render/scenery";
 import { Camera } from "../src/render/camera";
-import { BLEND, blendAdds } from "../src/engine/gl/spriteBatch";
+import { BLEND, blendAdds, INSTANCE_FLOATS } from "../src/engine/gl/spriteBatch";
 import type { ColorChannel, HsvShift, LevelHeader, LevelObject } from "../src/level/types";
 import { affine, apply, compose, lerpAngle, wrapDegrees } from "../src/engine/math";
 import { existsSync, readFileSync } from "node:fs";
@@ -28,7 +28,7 @@ import {
 } from "../src/render/anim";
 import type { AnimEntity } from "../src/assets/anims";
 import { GAME_ANIMATIONS } from "../src/assets/gameAnimations";
-import { TrailRenderer } from "../src/render/trail";
+import { streakHead, streakStyle, TrailRenderer } from "../src/render/trail";
 import { HardStreak, StreakBlend, bandPulse, strokeCorners } from "../src/render/hardStreak";
 import { GhostTrail, type GhostPlayer } from "../src/render/ghostTrail";
 import type { PlayerRenderer } from "../src/render/player";
@@ -556,35 +556,34 @@ test("a random frame is stable for an object and varies between neighbours", () 
 });
 
 // --- the player's streak -----------------------------------------------------
-// A ribbon of quads, one per segment, each turned to face along itself. The
-// arithmetic is what decides whether a streak follows the player or smears
-// across the screen, and none of it needs a browser.
+// CCMotionStreak: a ribbon of quads, one per segment, each turned to face
+// along itself, one width the whole way, fading point by point.
 
 const STREAK: EffectQuad = { u0: 0.1, v0: 0.2, du: 0.01, dv: 0.02, unit: 13, w: 32, h: 32 };
 const BLUE = { r: 0, g: 187, b: 255 };
+const STYLE = streakStyle(1);
 
 function trailOf(points: Array<[number, number, number]>, on = true): TrailRenderer {
   const trail = new TrailRenderer();
-  for (const [x, y, t] of points) trail.track(x, y, t, on);
+  for (const [x, y, t] of points) trail.track({ x, y }, t, on, STYLE);
   return trail;
 }
 
-test("a straight run lays one quad per segment, along the segment", () => {
+test("a straight run lays one quad per segment, one width the whole way", () => {
   const trail = trailOf([
     [0, 100, 0],
     [20, 100, 0.05],
     [40, 100, 0.1],
   ]);
-  const n = trail.build(STREAK, BLUE, 0.1, false);
+  const n = trail.build(STREAK, BLUE, 0.1, false, 10, STYLE.fade);
   assert.equal(n, 2, "two gaps between three points");
-  // First quad: centred between the first pair, pointing along +x.
   const d = trail.data;
-  assert.ok(Math.abs(d[4] - 10) < 1e-6, `centre x ${d[4]}`);
-  assert.ok(Math.abs(d[5] - 100) < 1e-6, `centre y ${d[5]}`);
-  assert.ok(Math.abs(d[0] - 10) < 1e-6, "half-length should be half the gap");
-  assert.ok(Math.abs(d[1]) < 1e-6, "a horizontal segment has no vertical component");
-  assert.ok(Math.abs(d[2]) < 1e-6, "the across vector is perpendicular");
-  assert.ok(d[3] > 0, "the across vector has width");
+  assert.ok(Math.abs(d[4] - 10) < 1e-6 && Math.abs(d[5] - 100) < 1e-6, `centre ${d[4]}, ${d[5]}`);
+  // Column one across (half the stroke), column two along (half the gap).
+  assert.ok(Math.abs(d[0]) < 1e-6 && Math.abs(d[1] - 5) < 1e-6, `across ${d[0]}, ${d[1]}`);
+  assert.ok(Math.abs(d[2] - 10) < 1e-6 && Math.abs(d[3]) < 1e-6, `along ${d[2]}, ${d[3]}`);
+  const f = INSTANCE_FLOATS;
+  assert.ok(Math.abs(d[f + 1] - 5) < 1e-6, "the older segment is as wide as the newer");
 });
 
 test("a diagonal segment turns the quad to match", () => {
@@ -592,27 +591,97 @@ test("a diagonal segment turns the quad to match", () => {
     [0, 0, 0],
     [30, 30, 0.05],
   ]);
-  trail.build(STREAK, BLUE, 0.05, false);
+  trail.build(STREAK, BLUE, 0.05, false, 10, STYLE.fade);
   const d = trail.data;
-  // Along and across must be perpendicular and the along vector must point up-right.
   const dot = d[0] * d[2] + d[1] * d[3];
-  assert.ok(Math.abs(dot) < 1e-6, `along and across are not perpendicular (dot ${dot})`);
-  assert.ok(d[0] > 0 && d[1] > 0, "the segment runs up and to the right");
+  assert.ok(Math.abs(dot) < 1e-6, `across and along are not perpendicular (dot ${dot})`);
+  assert.ok(d[2] > 0 && d[3] > 0, "the segment runs up and to the right");
+});
+
+test("the texture runs across the ribbon and once along it", () => {
+  // Point i of n at v = i/n, u from 0 to 1 across. [cocos2d CCMotionStreak::update]
+  const trail = trailOf([
+    [0, 0, 0],
+    [20, 0, 0.05],
+    [40, 0, 0.1],
+  ]);
+  trail.build(STREAK, BLUE, 0.1, false, 10, STYLE.fade);
+  const d = trail.data;
+  const f = INSTANCE_FLOATS;
+  assert.ok(Math.abs(d[6] - STREAK.u0) < 1e-6, "from the art's left edge");
+  assert.ok(Math.abs(d[8] - STREAK.du) < 1e-9, "the whole width of the art across");
+  assert.ok(Math.abs(d[7] - STREAK.v0) < 1e-6, "the tail at v0");
+  assert.ok(Math.abs(d[f + 7] - (d[7] + d[9])) < 1e-6, "each slice picks up where the last left off");
+  assert.ok(Math.abs(d[9] - STREAK.dv / 3) < 1e-6, "a third of the art for each of three points");
 });
 
 test("the tail fades and the head does not", () => {
   const trail = trailOf([
     [0, 0, 0],
-    [20, 0, 0.1],
-    [40, 0, 0.2],
-    [60, 0, 0.3],
+    [20, 0, 0.05],
+    [40, 0, 0.1],
+    [60, 0, 0.15],
   ]);
-  const n = trail.build(STREAK, BLUE, 0.3, false);
-  assert.ok(n >= 2, `expected several segments, got ${n}`);
+  const n = trail.build(STREAK, BLUE, 0.15, false, 10, STYLE.fade);
+  assert.equal(n, 3);
   const bytes = new Uint8Array(trail.data.buffer);
   const oldest = bytes[43];
   const newest = bytes[(n - 1) * 48 + 43];
   assert.ok(newest > oldest, `the head (${newest}) should be brighter than the tail (${oldest})`);
+});
+
+test("a point inside the minimum segment is not laid, and a stopped stroke lets the rest fade", () => {
+  // [gdp setupStreak :160763 (minSeg 5, fade 0.3)]
+  const close = trailOf([
+    [0, 0, 0],
+    [3, 0, 0.01],
+    [6, 0, 0.02],
+  ]);
+  assert.equal(close.build(STREAK, BLUE, 0.02, false, 10, STYLE.fade), 1, "the 3 is skipped, the 6 laid");
+  const trail = trailOf([
+    [0, 0, 0],
+    [20, 0, 0.05],
+  ]);
+  trail.track({ x: 40, y: 0 }, 0.1, false, STYLE);
+  assert.equal(trail.build(STREAK, BLUE, 0.1, false, 10, STYLE.fade), 1, "stopped: nothing new, nothing dropped");
+  trail.track({ x: 60, y: 0 }, 0.4, false, STYLE);
+  assert.ok(trail.empty, "all faded after 0.3 s");
+});
+
+test("a teleport starts the ribbon again where the player lands", () => {
+  const trail = trailOf([
+    [0, 0, 0],
+    [20, 0, 0.05],
+    [300, 0, 0.1],
+  ]);
+  assert.equal(trail.build(STREAK, BLUE, 0.1, false, 10, STYLE.fade), 0);
+});
+
+test("the seven streaks' settings and where the streak leaves the player", () => {
+  // [gdp PlayerObject::setupStreak :160736-160766; setPosition :144187-144278]
+  assert.deepEqual(
+    [1, 2, 3, 4, 5, 6, 7].map((i) => {
+      const s = streakStyle(i);
+      return [s.fade, s.stroke, s.white, s.ignoresSoftStop];
+    }),
+    [
+      [0.3, 10, false, false],
+      [0.3, 14, true, false],
+      [0.3, 8.5, false, false],
+      [0.4, 10, false, false],
+      [0.6, 5, false, true],
+      [1, 3, false, true],
+      [0.3, 14, true, false],
+    ],
+  );
+  assert.equal(streakStyle(99).frame, "streak_01_001");
+  const at = { x: 100, y: 50, reversed: false, rotated: false };
+  assert.deepEqual(streakHead({ ...at, mode: "cube" }, 1), { x: 98, y: 50 });
+  assert.deepEqual(streakHead({ ...at, mode: "cube" }, 0.6), { x: 98.8, y: 50 });
+  assert.deepEqual(streakHead({ ...at, mode: "ship" }, 1), { x: 104, y: 50 });
+  assert.deepEqual(streakHead({ ...at, mode: "ufo" }, 1), { x: 100, y: 50 });
+  assert.deepEqual(streakHead({ ...at, mode: "ship", reversed: true }, 1), { x: 96, y: 50 });
+  assert.deepEqual(streakHead({ ...at, mode: "cube", rotated: true }, 1), { x: 100, y: 48 });
 });
 
 test("the streak adds as the game's CCMotionStreak does, or covers by the same weights", () => {
@@ -626,7 +695,7 @@ test("the streak adds as the game's CCMotionStreak does, or covers by the same w
     [40, 0, 0.2],
   ]);
   const blends = (additive: boolean): number[] => {
-    const n = trail.build(STREAK, BLUE, 0.2, additive);
+    const n = trail.build(STREAK, BLUE, 0.2, additive, 10, STYLE.fade);
     const bytes = new Uint8Array(trail.data.buffer);
     return Array.from({ length: n }, (_, i) => bytes[i * 48 + 46]);
   };
@@ -853,49 +922,6 @@ test("turning the Ghost Trail off stops new copies and lets the old ones fade", 
   const ghosts = ghostRun(40, GHOST_PLAYER, (t) => t < 30);
   assert.equal(ghosts.build(39 / 240, art), 2, "the copies at 12 and 24, and none at 36");
   assert.equal(ghostRun(40, { ...GHOST_PLAYER, dead: true }).build(39 / 240, art), 0, "a dead player leaves none");
-});
-
-test("turning the trail off clears it rather than freezing it", () => {
-  const trail = trailOf([
-    [0, 0, 0],
-    [20, 0, 0.05],
-    [40, 0, 0.1],
-  ]);
-  trail.track(60, 0, 0.15, false);
-  assert.equal(trail.build(STREAK, BLUE, 0.15, false), 0, "a trail that was switched off should draw nothing");
-});
-
-test("points closer together than a segment's worth do not each get a quad", () => {
-  // A player at 1x covers about 1.3 units a tick; a quad each would be 240 a
-  // second for a ribbon nobody can see the joints of.
-  const points: Array<[number, number, number]> = [];
-  for (let i = 0; i < 40; i++) points.push([i * 0.4, 0, i / 240]);
-  const trail = trailOf(points);
-  const n = trail.build(STREAK, BLUE, 40 / 240, false);
-  assert.ok(n > 0, "a slow drift should still draw");
-  assert.ok(n < 20, `40 points 0.4 units apart should not make ${n} quads`);
-});
-
-test("the streak's texture is stretched along the ribbon, not repeated per segment", () => {
-  // Giving every quad the whole texture is what makes a streak come out as a
-  // row of stripes: the art's soft ends land at both ends of every segment.
-  const trail = trailOf([
-    [0, 0, 0],
-    [20, 0, 0.05],
-    [40, 0, 0.1],
-    [60, 0, 0.15],
-  ]);
-  const n = trail.build(STREAK, BLUE, 0.15, false);
-  assert.ok(n >= 3, `expected three segments, got ${n}`);
-  let expected = STREAK.u0;
-  for (let i = 0; i < n; i++) {
-    const u0 = trail.data[i * 12 + 6];
-    const du = trail.data[i * 12 + 8];
-    assert.ok(Math.abs(u0 - expected) < 1e-5, `segment ${i} starts at ${u0}, expected ${expected}`);
-    assert.ok(du < STREAK.du, `segment ${i} takes the whole texture rather than a slice`);
-    expected = u0 + du;
-  }
-  assert.ok(Math.abs(expected - (STREAK.u0 + STREAK.du)) < 1e-5, "the slices should cover the texture exactly once");
 });
 
 // --- what the player actually leaves behind ----------------------------------

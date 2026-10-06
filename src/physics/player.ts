@@ -10,7 +10,7 @@
 // comments can point at decomp lines. Units: see constants.ts.
 
 import type { GameMode, Speed } from "../level/types";
-import type { OrbType, PlayerState, SimEvent } from "./types";
+import { STREAK_OFF, STREAK_ON, STREAK_SOFT_OFF, type OrbType, type PlayerState, type SimEvent } from "./types";
 import {
   BALL_AIR_ROLL_BASE,
   BALL_AIR_ROLL_V5,
@@ -315,6 +315,17 @@ export class Player implements PlayerState {
   isSpider = false;
   isSwing = false;
   isFlying = false;
+
+  // --- the streak ------------------------------------------------------------
+  /** PlayerState.streak; a reset leaves it soft-stopped. [gdp resetObject :153629, :153668-153673] */
+  streak = STREAK_SOFT_OFF;
+  /**
+   * +1603: a jump, a pad, a slope's launch or a gravity flip put the player
+   * in the air, so the landing that ends it stops the streak softly. Every
+   * landing and the four flying toggles clear it. [gdp set :147570, :147686,
+   * :151189, :155852; cleared :150197, :152823 and the other toggles]
+   */
+  streakArmed = false;
 
   // --- updateTimeMod -------------------------------------------------------
   playerSpeed = SPEED_PARAMS[1].playerSpeed;
@@ -945,7 +956,11 @@ export class Player implements PlayerState {
       if (wasFlying || willFly) {
         this.onGround = false;
         this.onGround2 = false;
+        this.streakArmed = false;
       }
+      // Turning one on starts the streak. [gdp toggleFlyMode :152875;
+      //  toggleSwingMode :152612; toggleBirdMode :152975; toggleDartMode :153054]
+      if (willFly) this.activateStreak();
     }
     this.mode = mode;
     this.modeIndex = MODE_INDEX[mode];
@@ -1553,6 +1568,8 @@ export class Player implements PlayerState {
           this.stateRingJump = false;
           this.robotHoldEnded = false;
           this.robotHold = 0;
+          // [:155852]
+          this.streakArmed = true;
           let yStart = this.yStart;
           if (this.isRobot) yStart *= ROBOT_JUMP_FACTOR;
           // [:155785-155814]
@@ -1785,6 +1802,11 @@ export class Player implements PlayerState {
       this.stopRotation();
       this.runBallRotation2();
     }
+    // The streak comes on, but not for the ball or the wave. [:151180-151192]
+    if (!this.isBall && !this.isWave) {
+      this.streakArmed = true;
+      this.activateStreak();
+    }
     this.world.emit("flip", this.playerNo);
   }
 
@@ -1854,6 +1876,7 @@ export class Player implements PlayerState {
    */
   boostPlayer(amount: number): void {
     this.maybeIsBoosted = true;
+    this.streakArmed = true;
     this.onGround2 = false;
     this.onGround = false;
     this.isAccelerating = true;
@@ -1890,6 +1913,9 @@ export class Player implements PlayerState {
     if (this.isBall || this.isSpider || this.isSwing) this.yVel *= PAD_SLOW_MODE_FACTOR;
     // [:147694]
     this.runRotateAction();
+    // [:147686, :147714]
+    this.streakArmed = true;
+    this.activateStreak();
     // Where it was launched from, for the camera. [:147715-147716]
     this.lastGroundY = this.worldY;
   }
@@ -1938,6 +1964,8 @@ export class Player implements PlayerState {
     // still counts as running (+1480). [:160263-160266]
     if (this.isBall) this.runBallRotation2();
     else this.runRotateAction();
+    // [:160271]
+    this.activateStreak();
     if (this.isBall || this.isSpider) {
       this.yVel *= ORB_BALL_SPIDER_FACTOR;
       this.holding = false;
@@ -1960,9 +1988,10 @@ export class Player implements PlayerState {
       ? BLACK_ORB_FLYING_VELOCITY * (this.isUfo ? BLACK_ORB_UFO_FACTOR : 1)
       : BLACK_ORB_VELOCITY * (this.isSpider ? BLACK_ORB_SPIDER_FACTOR : 1);
     this.setYVelocity(Math.fround(this.flipMod() * v));
-    // [:160374-160377]
+    // [:160374-160378]
     if (this.isBall) this.runBallRotation2();
     else this.runRotateAction();
+    this.activateStreak();
     this.isAccelerating = true;
     if (this.isBall || this.isSwing) this.holding = false;
   }
@@ -2018,6 +2047,10 @@ export class Player implements PlayerState {
       if ((this.ballRotating && !this.onSlope) || this.ballAirRoll) this.stopRotation();
       if (!this.spinning) this.runRotateAction();
     }
+    // Landing off a jump, pad or flip stops the streak softly; a flying
+    // player keeps it. [:150191-150197]
+    if (!this.isFlying && this.streakArmed) this.deactivateStreak(false);
+    this.streakArmed = false;
   }
 
   /**
@@ -2043,6 +2076,21 @@ export class Player implements PlayerState {
    * the air roll, the slope's speed — and the angle stays where it is.
    * [gdp PlayerObject::stopRotation, gd-ida-decomp.cpp:142347-142357]
    */
+  /** activateStreak: the streak lays again. [gdp PlayerObject::activateStreak :147620-147650] */
+  activateStreak(): void {
+    this.streak = STREAK_ON;
+  }
+
+  /**
+   * deactivateStreak: a hard stop ends every streak; a soft one (a landing,
+   * a dash, a reset) leaves streaks 5 and 6 laying.
+   * [gdp PlayerObject::deactivateStreak :147767-147784]
+   */
+  deactivateStreak(hard: boolean): void {
+    if (hard) this.streak = STREAK_OFF;
+    else if (this.streak === STREAK_ON) this.streak = STREAK_SOFT_OFF;
+  }
+
   stopRotation(): void {
     this.spinning = false;
     this.ballAirRoll = false;
@@ -2395,6 +2443,8 @@ export class Player implements PlayerState {
     this.isSpider = o.isSpider;
     this.isSwing = o.isSwing;
     this.isFlying = o.isFlying;
+    this.streak = o.streak;
+    this.streakArmed = o.streakArmed;
     this.playerSpeed = o.playerSpeed;
     this.yStart = o.yStart;
     this.gravity = o.gravity;
