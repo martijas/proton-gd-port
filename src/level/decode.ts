@@ -256,7 +256,7 @@ const LEGACY_COLOR_KEYS: Record<string, number> = {
   kS37: 1003, // 3DL
 };
 
-function parseHsv(s: string | undefined): HsvShift | null {
+export function parseHsv(s: string | undefined): HsvShift | null {
   if (!s) return null;
   const p = s.split("a");
   if (p.length < 5) return null;

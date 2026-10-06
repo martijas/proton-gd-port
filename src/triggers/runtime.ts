@@ -20,10 +20,10 @@
 // Rule citations point into data/ref/trigger-semantics.md, which in turn cites
 // line numbers in the 2.206 decompile.
 
-import type { Level, LevelHeader } from "../level/types";
+import type { HsvShift, Level, LevelHeader } from "../level/types";
 import { K_SLOPE, K_SOLID, type ObjectSet } from "../physics/collision";
 import { COLLISION_SECTION_SCALE, GAME_GROUND_Y, maxGameplayYFor, usesYSections } from "../physics/constants";
-import { OBJECT_KEY, objectFlag } from "../level/decode";
+import { OBJECT_KEY, objectFlag, parseHsv } from "../level/decode";
 import {
   GAMEPLAY_OFFSET_X,
   LEVEL_END_MARGIN,
@@ -874,8 +874,10 @@ interface AreaTween {
 interface AreaInstance {
   /** The trigger it came from. */
   source: number;
-  /** 0 move, 1 rotate, 2 scale: the order the game keeps its lists in, reversed. */
-  kind: 0 | 1 | 2;
+  /** 0 move, 1 rotate, 2 scale: the order the game keeps its lists in, reversed; 3 fade, 4 tint. */
+  kind: 0 | 1 | 2 | 3 | 4;
+  /** An Area Tint's channel (260), halves (65 main only, 66 detail only) and HSV (278 with 49). */
+  tint: AreaTintSource | null;
   group: number;
   /** Key 71 as read, which a repeat firing must match to reuse this instance. */
   centreGroup: number;
@@ -904,6 +906,29 @@ interface AreaInstance {
 /** What the area triggers have done to one object this step: x, y, spin, and the two scale factors. */
 type AreaOffset = [number, number, number, number, number];
 
+interface AreaTintSource {
+  channel: number;
+  main: boolean;
+  detail: boolean;
+  hsv: HsvShift | null;
+}
+
+/** One Area Tint reaching an object: how far into the area it is (0 at the centre) and how much it tints. */
+export interface AreaTint extends AreaTintSource {
+  value: number;
+  percent: number;
+}
+
+/** What the Area Fade and Tint triggers do to one object this step. */
+export interface AreaVisual {
+  /** The opacity the nearest Area Fade gives it, times its own; undefined with no fade on it. */
+  opacity: number | undefined;
+  /** The tints, in the order they apply. */
+  tints: AreaTint[];
+}
+
+const NO_AREA_VISUALS: ReadonlyMap<number, AreaVisual> = new Map();
+
 const NO_AREA_OFFSETS: ReadonlyMap<number, AreaOffset> = new Map();
 
 function cloneArea(a: AreaInstance): AreaInstance {
@@ -913,6 +938,7 @@ function cloneArea(a: AreaInstance): AreaInstance {
 export interface TriggerSnapshot {
   areas: readonly AreaInstance[];
   areaOffsets: ReadonlyMap<number, AreaOffset>;
+  areaVisuals: ReadonlyMap<number, AreaVisual>;
   areaGroups: readonly number[];
   groupM: Float64Array;
   groupSpin: Float64Array;
@@ -1119,6 +1145,7 @@ export class TriggerRuntime {
    */
   private areas: AreaInstance[] = [];
   private areaOffsets: ReadonlyMap<number, AreaOffset> = NO_AREA_OFFSETS;
+  private areaVisuals: ReadonlyMap<number, AreaVisual> = NO_AREA_VISUALS;
   private areaGroups: readonly number[] = [];
   private areaRand: AreaRandom | null = null;
   private areaP1x = 0;
@@ -1270,7 +1297,7 @@ export class TriggerRuntime {
       break;
     }
     for (const spec of index.byObject.values()) {
-      if (spec.id < 3006 || spec.id > 3008) continue;
+      if (spec.id < 3006 || spec.id > 3010) continue;
       this.areaRand = areaRandom(level.objects.length);
       break;
     }
@@ -1395,6 +1422,7 @@ export class TriggerRuntime {
     return {
       areas: this.areas,
       areaOffsets: this.areaOffsets,
+      areaVisuals: this.areaVisuals,
       areaGroups: this.areaGroups,
       groupM: this.groupM,
       groupSpin: this.groupSpin,
@@ -1456,6 +1484,7 @@ export class TriggerRuntime {
     const moved = this.groupM !== s.groupM || this.followDy !== s.followDy || this.areaOffsets !== s.areaOffsets;
     this.areas = s.areas as AreaInstance[];
     this.areaOffsets = s.areaOffsets;
+    this.areaVisuals = s.areaVisuals;
     this.areaGroups = s.areaGroups;
     this.groupM = s.groupM;
     this.groupSpin = s.groupSpin;
@@ -1676,7 +1705,7 @@ export class TriggerRuntime {
   stepMoves(dt: number, playerDx: number, playerDy: number, cameraDx: number, cameraDy: number, playerY: number): void {
     if (this.timers.size > 0) this.stepTimers(dt);
     if (this.commands.length > 0) this.stepCommands(dt, playerDx, playerDy, cameraDx, cameraDy, playerY);
-    if (this.areas.length > 0 || this.areaGroups.length > 0) this.stepAreas(dt);
+    if (this.areas.length > 0 || this.areaGroups.length > 0 || this.areaVisuals.size > 0) this.stepAreas(dt);
     if (this.visual.shakeRemaining > 0) {
       this.visual.shakeRemaining -= dt;
       if (this.visual.shakeRemaining <= 0) {
@@ -1987,11 +2016,16 @@ export class TriggerRuntime {
     const offsets = new Map<number, AreaOffset>();
     const groups = new Set<number>();
     this.areaOffsets = offsets;
-    for (const kind of [2, 1, 0] as const) {
+    // Then the fades, then the tints, which only change how objects look.
+    // [gdp processAreaVisualActions :470151-470155]
+    const visuals = new Map<number, AreaVisual>();
+    const fadeAt = new Map<number, number>();
+    for (const kind of [2, 1, 0, 3, 4] as const) {
       for (const a of this.areas) {
-        if (a.kind === kind) this.stepArea(a, dt, offsets, groups);
+        if (a.kind === kind) this.stepArea(a, dt, offsets, groups, visuals, fadeAt);
       }
     }
+    this.areaVisuals = visuals.size > 0 ? visuals : NO_AREA_VISUALS;
     for (const g of before) this.markDirty(g);
     for (const g of groups) {
       this.noteMoved(g);
@@ -2000,7 +2034,14 @@ export class TriggerRuntime {
     this.areaGroups = groups.size > 0 ? [...groups] : [];
   }
 
-  private stepArea(a: AreaInstance, dt: number, offsets: Map<number, AreaOffset>, groups: Set<number>): void {
+  private stepArea(
+    a: AreaInstance,
+    dt: number,
+    offsets: Map<number, AreaOffset>,
+    groups: Set<number>,
+    visuals: Map<number, AreaVisual>,
+    fadeAt: Map<number, number>,
+  ): void {
     const v = a.vals;
     // Edit Area's tweens land first. [gdp updateTransitions :717056-717096]
     if (a.tweens.length > 0) {
@@ -2055,6 +2096,10 @@ export class TriggerRuntime {
         v[282],
         a.invert,
       );
+      if (a.kind >= 3) {
+        this.areaVisual(a, i, at, visuals, fadeAt);
+        continue;
+      }
       if (at >= 1) {
         if (a.dual) a.sides.set(i, 0);
         continue;
@@ -2114,6 +2159,40 @@ export class TriggerRuntime {
   }
 
   /**
+   * An Area Fade or Tint reaching one object, at `at` of the way out (not
+   * eased). A fade sets the opacity from key 286 at the centre to key 275 at
+   * the edge and beyond, and of the fades on an object in one step the one it
+   * is deepest into wins. A tint inside its area mixes key 265's share of its
+   * channel in at the centre, less further out, or with key 278 shifts by its
+   * HSV, scaled the same way.
+   * [gdp processAreaFadeGroupAction :426992-427057 → GameObject::setAreaOpacity
+   *  :167548-167566; processAreaTintGroupAction :427159-427395;
+   *  EnterEffectInstance::loadValuesFromObject :717866-717869 (+120 key 265,
+   *  +128 key 275, +132 key 286)]
+   */
+  private areaVisual(a: AreaInstance, i: number, at: number, visuals: Map<number, AreaVisual>, fadeAt: Map<number, number>): void {
+    const v = a.vals;
+    let entry = visuals.get(i);
+    if (a.kind === 3) {
+      const best = fadeAt.get(i);
+      if (best !== undefined && at >= best) return;
+      fadeAt.set(i, at);
+      if (!entry) visuals.set(i, (entry = { opacity: undefined, tints: [] }));
+      entry.opacity = Math.max(0, Math.min(1, v[286] + (v[275] - v[286]) * at));
+      return;
+    }
+    const tint = a.tint;
+    if (!tint || at >= 1 || (!tint.main && !tint.detail)) return;
+    if (!entry) visuals.set(i, (entry = { opacity: undefined, tints: [] }));
+    entry.tints.push({ ...tint, value: at, percent: v[265] });
+  }
+
+  /** What the Area Fade and Tint triggers do to an object this step, if anything. */
+  areaVisualOf(objectIndex: number): AreaVisual | undefined {
+    return this.areaVisuals.size > 0 ? this.areaVisuals.get(objectIndex) : undefined;
+  }
+
+  /**
    * One object's eased distance. With dual easing the side of the centre it
    * is on picks the curve, and the side it was on last step holds until it
    * is clear of the ends.
@@ -2140,7 +2219,7 @@ export class TriggerRuntime {
    *  read over keys 51, 71 and 538 at customObjectSetup :300240-300259;
    *  compEnterEffectSort :415080-415095]
    */
-  private runArea(spec: TriggerSpec, kind: 0 | 1 | 2): void {
+  private runArea(spec: TriggerSpec, kind: 0 | 1 | 2 | 3 | 4): void {
     if (!this.areaRand) return;
     this.fork();
     const group = this.grp(int(spec, 226) || int(spec, 51));
@@ -2189,6 +2268,12 @@ export class TriggerRuntime {
       tweens: [],
       counter: 0,
       sides: new Map(),
+      // [gdp EnterEffectObject::customObjectSetup :300089-300092 (260),
+      //  :300185-300212 (65, 66, 278 with 49)]
+      tint:
+        kind === 4
+          ? { channel: int(spec, 260), main: !flag(spec, 66), detail: !flag(spec, 65), hsv: flag(spec, 278) ? parseHsv(spec.props[49]) : null }
+          : null,
     };
     this.areas = [...list, area].sort((x, y) => y.priority - x.priority);
   }
@@ -3126,9 +3211,17 @@ export class TriggerRuntime {
       case 3008:
         this.runArea(spec, 2);
         return;
+      case 3009:
+        this.runArea(spec, 3);
+        return;
+      case 3010:
+        this.runArea(spec, 4);
+        return;
       case 3011:
       case 3012:
       case 3013:
+      case 3014:
+      case 3015:
         this.runAreaEdit(spec);
         return;
       case 3024:

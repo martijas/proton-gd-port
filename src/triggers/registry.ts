@@ -58,7 +58,10 @@ const AREA_MOTION: TriggerEntry = {
   note: "falloff, easing, dual easing, variance, priority and the players or a group as centre are the game's; a screen-corner centre does nothing, group parents are not moved as one piece, and the variance table's seed is not the game's",
 };
 /** Area Fade and Tint: colour only, once a frame. */
-const AREA_VISUAL: TriggerEntry = { status: "todo", note: "the fade and tint areas only change colours; not built" };
+const AREA_VISUAL: TriggerEntry = {
+  status: "partial",
+  note: "worked out once a step rather than once a frame; the screen-edge centres are not modelled",
+};
 
 const STATUS: ReadonlyMap<number, TriggerEntry> = new Map<number, TriggerEntry>([
   // --- enter effects, into the runtime's enter tables as they are reached ---

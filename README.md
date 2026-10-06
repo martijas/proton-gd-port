@@ -758,8 +758,9 @@ of its own (37) in `PlayLayer::addObject` (IDA:90320-90345).
 **What the boomlings notes leave open.** A moving solid collides as a static
 block where it now stands, so a squeeze under one is approximate: the game's
 moving-object branch of the collision is one long function that waits for a
-port of the whole. Advanced Follow (3016) and the area Fade and Tint are not
-built; `npm run triggers` counts these. The Event trigger hears the buttons,
+port of the whole. Advanced Follow (3016) is not built; `npm run triggers`
+counts it. The area Fade and Tint are worked out once a step, where the game
+does it once a frame. The Event trigger hears the buttons,
 pickups, jumps, landings, robot boosts, orbs and pads, which covers every event
 the tower floors listen for, but not the portal and gravity events. Ice and the slope
 and boost slides still use a measured ramp. `data/ref/boomlings-notes.md`

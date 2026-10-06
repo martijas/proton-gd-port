@@ -49,7 +49,7 @@ import { frameSourceSize } from "../assets/atlasTypes";
 import type { ChildRecord, Cut, ObjectRecord } from "../assets/objectTypes";
 import type { HsvShift, Level, LevelObject } from "../level/types";
 import { OBJECT_KEY, objectFlag, objectInt } from "../level/decode";
-import type { TriggerRuntime } from "../triggers/runtime";
+import type { AreaTint, TriggerRuntime } from "../triggers/runtime";
 import { loadAngles, loadRotation } from "../physics/objects";
 import {
   CHANNEL,
@@ -57,6 +57,8 @@ import {
   channelOpacityMod,
   colorForPulse,
   lighterColor,
+  multipliedColorValue,
+  multipliedHsv,
   pulseAppliesTo,
   type ColorSource,
   type ColorTable,
@@ -1344,6 +1346,11 @@ export class DrawList {
     // [channelOpacityMod; GameObject::setOpacity :167631-167636, :167683-167687]
     let alpha = meta.ownAlpha[i] * channelOpacityMod(channel.a);
     for (const g of object.groups) alpha *= live.triggers.groupAlphaOf(g);
+    const area = live.triggers.areaVisualOf?.(o);
+    if (area) {
+      if (area.opacity !== undefined) alpha *= area.opacity;
+      if (meta.black[i] !== 1) rgb = areaTinted(rgb, area.tints, isMain, colours);
+    }
     // The special animations' first-frame flash. [flashHalves]
     const flash = this.objects.flash[o];
     if (flash !== 0 && meta.glow[i] === 0 && (flash & (isMain ? 1 : 2)) !== 0) rgb = WHITE;
@@ -1370,6 +1377,23 @@ export class DrawList {
   ): DrawList {
     return buildDrawList(level, render, atlas, colors, movingGroups, entities, font);
   }
+}
+
+/**
+ * The Area Tints on one half of an object, in order: with an HSV, the shift
+ * scaled by how near the centre it is; else that much of the tint's share of
+ * its channel mixed in. [gdp processAreaTintGroupAction :427199-427208
+ * (getMultipliedHSV by 1 − value, transformColor), :427325-427383
+ * (multipliedColorValue by 1 − percent + value × percent)]
+ */
+export function areaTinted(rgb: Rgb, tints: readonly AreaTint[], isMain: boolean, colours: { get(channel: number): Rgb }): Rgb {
+  let out = rgb;
+  for (const t of tints) {
+    if (!(isMain ? t.main : t.detail)) continue;
+    if (t.hsv) out = applyHsv(out, multipliedHsv(t.hsv, 1 - t.value));
+    else out = multipliedColorValue(colours.get(t.channel), out, 1 - t.percent + t.value * t.percent);
+  }
+  return out;
 }
 
 function clamp01(v: number): number {
