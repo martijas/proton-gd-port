@@ -190,6 +190,9 @@ layout(location = 4) in uvec4 aFlags;
 uniform vec4 uCamera;
 // the view's turn as cos, sin: clockwise, about the centre, before the scale
 uniform vec2 uTurn;
+// a mirror portal's flip: x = how far each centre is carried across the view's
+// centre (1 - 2f), y = -1 once the sprites themselves are turned over
+uniform vec2 uMirror;
 
 out vec2 vUv;
 out vec4 vTint;
@@ -203,8 +206,9 @@ void main() {
   int id = aFlags.w == ${SHAPE.TRIANGLE}u && gl_VertexID == 3 ? 2 : gl_VertexID;
   vec2 corner = vec2(float(id & 1), float(id >> 1));
   vec2 unit = vec2(corner.x * 2.0 - 1.0, 1.0 - corner.y * 2.0);
-  vec2 world = vec2(aXform.x * unit.x + aXform.z * unit.y,
-                    aXform.y * unit.x + aXform.w * unit.y) + aPos;
+  vec2 pos = vec2(uCamera.x + (aPos.x - uCamera.x) * uMirror.x, aPos.y);
+  vec2 world = vec2((aXform.x * unit.x + aXform.z * unit.y) * uMirror.y,
+                    aXform.y * unit.x + aXform.w * unit.y) + pos;
   // Turned in units, before the scale: the scale is not the same both ways.
   vec2 d = world - uCamera.xy;
   d = vec2(d.x * uTurn.x + d.y * uTurn.y, -d.x * uTurn.y + d.y * uTurn.x);
@@ -320,6 +324,7 @@ export class SpriteBatch {
   private readonly sheetLocations: (WebGLUniformLocation | null)[] = [];
   private readonly cameraLocation: WebGLUniformLocation | null;
   private readonly turnLocation: WebGLUniformLocation | null;
+  private readonly mirrorLocation: WebGLUniformLocation | null;
   private readonly addAlphaLocation: WebGLUniformLocation | null;
   /** Draw calls and instances issued since the last `beginFrame`. */
   drawCalls = 0;
@@ -374,6 +379,8 @@ export class SpriteBatch {
     this.program.use();
     this.cameraLocation = this.program.location("uCamera");
     this.turnLocation = this.program.location("uTurn");
+    this.mirrorLocation = this.program.location("uMirror");
+    if (this.mirrorLocation) gl.uniform2f(this.mirrorLocation, 1, 1);
     this.addAlphaLocation = this.program.location("uAddAlpha");
     for (let i = 0; i < MAX_SHEETS; i++) {
       const at = this.program.location(`uSheet${i}`);
@@ -416,6 +423,22 @@ export class SpriteBatch {
       const r = (degrees * Math.PI) / 180;
       this.gl.uniform2f(this.turnLocation, Math.cos(r), Math.sin(r));
     }
+    this.setMirror(0);
+  }
+
+  /**
+   * A mirror portal's flip, `f` from 0 (as placed) to 1 (mirrored). Each
+   * sprite's centre slides across the view's centre by 1 - 2f and the sprite
+   * turns over once f passes a half, rather than squeezing: the game moves
+   * each object's x and flips it at the halfway point, then mirrors the layer.
+   * [gdp GJBaseGameLayer::toggleFlipped :449092-449158; the per-object x
+   *  :90553-90569 and its flip at 0.5 :90570-90593; flipObjects
+   *  :433200-433231 for the players; visit :433724-433743]
+   */
+  setMirror(f: number): void {
+    if (!this.mirrorLocation) return;
+    this.program.use();
+    this.gl.uniform2f(this.mirrorLocation, 1 - 2 * f, f >= 0.5 ? -1 : 1);
   }
 
   /**

@@ -251,7 +251,9 @@ export class PlayerRenderer {
     const scale = state.mini ? MINI_SCALE : 1;
     const body = compose(
       affine(state.x, state.y, state.rotation, 1, 1),
-      artLayer(state.mode, state.rotated, scale * (state.mirrored ? -1 : 1), scale * (state.flipped ? -1 : 1)),
+      // A mirror portal turns the player over with the level, in the batch
+      // (SpriteBatch.setMirror), not here.
+      artLayer(state.mode, state.rotated, scale, scale * (state.flipped ? -1 : 1)),
     );
     const glow = this.glow || p1.r + p1.g + p1.b < DARK_SUM;
     // The outline wears the strengthened colour 2, worked out from the icon's

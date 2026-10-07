@@ -22,6 +22,7 @@ import { STREAK_ON, STREAK_SOFT_OFF, TICK_RATE, type PlayerState, type Sim } fro
 import { streakHead, streakStyle, TrailRenderer } from "./trail";
 import { MINI_SCALE } from "../physics/constants";
 import { lerp, lerpAngle } from "../engine/math";
+import { easedValue } from "../triggers/easing";
 import { Camera, corridorArt, turnPoint } from "./camera";
 import { GRADIENT_SLOT, GradientPainter } from "./gradients";
 import { applyHsv, CHANNEL, ColorTable, describeChannel, playerChannelColours, type Rgb } from "./colors";
@@ -62,6 +63,8 @@ export interface FrameStats {
 
 /** How fast the shake re-rolls when the trigger asks for no interval. [gdp applyShake :431250] */
 const SHAKE_DEFAULT_INTERVAL = 0;
+/** How long a mirror portal takes to turn the level over. [gdp toggleFlipped :449158] */
+const MIRROR_FLIP_SECONDS = 0.4;
 
 /** B1's draw layer: the last behind the player, whose top the streak and the objects' own particle systems share. */
 const B1_SLOT = LAYERS_BEHIND - 1;
@@ -183,6 +186,15 @@ export class Scene {
   /** The player's pose at the end of the previous tick, for interpolation. */
   private readonly prevPose = { x: 0, y: 0, rotation: 0, has: false };
   private readonly pose = { x: 0, y: 0, rotation: 0 };
+  /**
+   * A mirror portal's flip of the level (+864): 0 as placed, 1 mirrored,
+   * tweened between over 0.4 s, Ease In Out at 1.2. `prev`/`now` are the last
+   * two ticks' values, for the frame to interpolate. [gdp
+   * GJBaseGameLayer::toggleFlipped :449092-449158 (tweenValue slot 7)]
+   */
+  private readonly flip = { from: 0, to: 0, elapsed: MIRROR_FLIP_SECONDS, prev: 0, now: 0, has: false };
+  /** The flip this frame, applied to the object layer and the players. */
+  private frameFlip = 0;
   readonly stats: FrameStats = { sprites: 0, drawCalls: 0, buildMs: 0, gatherMs: 0 };
 
   constructor(readonly gl: GlContext) {}
@@ -567,6 +579,7 @@ export class Scene {
       this.prevPose.rotation = p.rotation;
       this.prevPose.has = true;
     }
+    this.stepFlip(p.mirrored);
     // The camera triggers' tweens have been stepped in the sim's tick; the
     // follow needs this tick's zoom for the gameplay offset and the padding.
     this.camera.applyTriggers(sim.triggers.camera);
@@ -814,6 +827,9 @@ export class Scene {
    */
   resetInterpolation(): void {
     this.prevPose.has = false;
+    // A reset puts the flip where the player is at once (toggleFlipped's
+    // instant path). [gdp :449105-449110, :449130-449133]
+    this.flip.has = false;
     this.afterlife = 0;
     this.completeWavesMade = false;
     for (const band of this.bands) band.reset();
@@ -821,6 +837,35 @@ export class Scene {
     this.ghosts.reset();
     this.playerParticles.reset();
     this.list?.reset();
+  }
+
+  /**
+   * One tick of the mirror flip. A new target starts a 0.4 s tween from
+   * wherever the flip is now, as tweenValue does from +864; the first tick
+   * after a load or reset jumps straight there.
+   */
+  private stepFlip(mirrored: boolean): void {
+    const f = this.flip;
+    const target = mirrored ? 1 : 0;
+    if (!f.has) {
+      f.from = f.to = f.prev = f.now = target;
+      f.elapsed = MIRROR_FLIP_SECONDS;
+      f.has = true;
+      return;
+    }
+    f.prev = f.now;
+    if (target !== f.to) {
+      f.from = f.now;
+      f.to = target;
+      f.elapsed = 0;
+    }
+    if (f.elapsed < MIRROR_FLIP_SECONDS) {
+      f.elapsed = Math.min(MIRROR_FLIP_SECONDS, f.elapsed + 1 / TICK_RATE);
+      const t = easedValue(f.elapsed / MIRROR_FLIP_SECONDS, 1, 1.2);
+      f.now = f.from + (f.to - f.from) * t;
+    } else {
+      f.now = f.to;
+    }
   }
 
   /**
@@ -923,6 +968,7 @@ export class Scene {
     // The size part-way too: a zoom steps once a tick, like the centre and
     // the turn.
     this.batch.beginFrame(this.frameCentreX, this.frameCentreY, this.camera.unitsWideAt(alpha), this.camera.unitsHighAt(alpha), this.frameTurn);
+    this.frameFlip = this.flip.has ? lerp(this.flip.prev, this.flip.now, Math.min(1, alpha)) : 0;
 
     // Every particle system is stepped once, before anything is drawn: their
     // runs are drawn at different depths below.
@@ -969,6 +1015,7 @@ export class Scene {
       // throws: the interface draws straight after this.
       if (this.phase === 1) this.closeBand();
       this.split = null;
+      this.batch.setMirror(0);
     }
     // The game layer's own circles, over the whole level and outside any
     // band: the layers the level is in are its children at z -1, and the
@@ -1070,6 +1117,10 @@ export class Scene {
   private drawPart(part: number): void {
     const batch = this.batch;
     if (!batch) return;
+    // A mirror portal turns over the object layer and the players; the sky,
+    // the middleground and the ground stay as they are.
+    const scenery = part === SCENE_PART.BACKGROUND || part === SCENE_PART.MIDDLEGROUND || part === SCENE_PART.GROUND;
+    batch.setMirror(scenery ? 0 : this.frameFlip);
     switch (part) {
       case SCENE_PART.BACKGROUND:
         this.drawBackdrop();
