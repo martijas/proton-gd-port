@@ -690,11 +690,10 @@ Camera Rotate the way the game's does.
 BG, MG, G, UI or Max turns with the camera, where the game's stays upright.
 Blends 0-3 (key 174) all draw.
 
-**Frame animations the table does not cover.** The per-id frame choices of
-1697-1699 and the extra drops of 1855 and 1858 play the plain cycle, the
-special animations of 1839-1842, 2892 and 2893 hold their resting frame, and
-an Animate trigger cannot yet switch a beast to a named clip. The platformer
-camera's own dead zone is not built either (Camera Mode, 2925).
+**Frame animations the table does not cover.** The special animations of
+1839-1842 (scale and opacity of the ring children) and 2892 and 2893 (a
+16-step spin) hold their resting frame. The platformer camera's own dead
+zone is not built either (Camera Mode, 2925).
 
 **Dash's ship tunnel at x 17745-18975.** The best run on the old band entered
 ship mode through a teleport onto the portal at (15765, 555), took the 390-690

@@ -36,6 +36,7 @@ import {
   type StaticCameraAxis,
 } from "../render/camera";
 import { CHANNEL, ColorTable, type ColorSnapshot, type PulseAction, type Rgb } from "../render/colors";
+import { animateSwitchesClip } from "../render/anim";
 import { wrapDegrees } from "../engine/math";
 import { ENTER, ENTER_TRIGGER_IDS, enterCode } from "../render/enterEffects";
 import { type Command, commandProgress, newCommand, stepCommand } from "./commands";
@@ -358,6 +359,13 @@ export interface VisualState {
    *  PlayLayer::updateVisibility makes, for an active object :95979-95983]
    */
   animationStarts: ReadonlyMap<number, number>;
+  /**
+   * The latest Animate trigger's key 76 (animation id) for each beast it
+   * reached, with a generation that bumps each fire so the renderer can
+   * switch the clip once. Replaced like `animations`. [playAnimationCommand
+   *  :422977-423004 → AnimatedGameObject::playAnimation :307645-307681]
+   */
+  skeletonAnims: ReadonlyMap<number, { id: number; gen: number }>;
   /**
    * The enter effect in force on each of the 101 enter channels, coming in and
    * going out, as render/enterEffects.ts ENTER codes. Replaced, never changed
@@ -1355,6 +1363,7 @@ export class TriggerRuntime {
       options: defaultOptions(level.header),
       animations: new Map(),
       animationStarts: new Map(),
+      skeletonAnims: new Map(),
       enter: defaultEnterTables(),
     };
     this.firedSlot = new Int32Array(level.objects.length).fill(-1);
@@ -3653,24 +3662,34 @@ export class TriggerRuntime {
   }
 
   /**
-   * The Animate trigger, for the objects that wait for one (key 123): each
-   * one's count goes up, which is what restarts a Custom Particles emitter,
-   * and its animation is rewound to wait for its first step as an active
+   * The Animate trigger: for beasts (918, 1584, 2012) it switches the named
+   * clip from key 76; for objects that wait for one (key 123) each one's
+   * count goes up — which restarts a Custom Particles emitter — and its
+   * frame animation is rewound to wait for its first step as an active
    * object (settleAnimationStarts), as the game's clock only starts once the
-   * visibility pass reaches it. With key 214 the trigger passes over an
-   * object that is not active. Switching an object to a named clip is not
-   * done. [gdp EffectGameObject::triggerObject :315512-315513 →
-   *  playAnimationCommand :422977-423004 → animationTriggered :164755-164759
-   *  → EnhancedGameObject::triggerAnimation :620430-620445 (the +1252 / +657
-   *  test, +1164 = 0)]
+   * visibility pass reaches it. With key 214 the frame-animation path
+   * passes over an object that is not active; beasts always switch.
+   * [gdp EffectGameObject::triggerObject :315512-315513 →
+   *  playAnimationCommand :422977-423004 → AnimatedGameObject::playAnimation
+   *  or animationTriggered :164755-164759 → EnhancedGameObject::
+   *  triggerAnimation :620430-620445 (the +1252 / +657 test, +1164 = 0);
+   *  customObjectSetup key 76 → +1464 :299286-299289]
    */
   private runAnimate(spec: TriggerSpec): void {
     if (!this.visuals) return;
     const group = this.grp(spec.target);
+    const animId = int(spec, 76);
     let next: Map<number, number> | null = null;
     let starts: Map<number, number> | null = null;
+    let skeletons: Map<number, { id: number; gen: number }> | null = null;
     for (const index of this.index.groups.get(group) ?? []) {
       const object = this.level.objects[index];
+      if (animateSwitchesClip(object.id)) {
+        skeletons ??= new Map(this.visual.skeletonAnims);
+        const prev = skeletons.get(index);
+        skeletons.set(index, { id: animId, gen: (prev?.gen ?? 0) + 1 });
+        continue;
+      }
       if (!objectFlag(object, OBJECT_KEY.animateOnTrigger)) continue;
       if (objectFlag(object, OBJECT_KEY.animateActiveOnly) && !this.objectActive(index)) continue;
       next ??= new Map(this.visual.animations);
@@ -3681,6 +3700,7 @@ export class TriggerRuntime {
     }
     if (next) this.visual.animations = next;
     if (starts) this.visual.animationStarts = starts;
+    if (skeletons) this.visual.skeletonAnims = skeletons;
   }
 
   /** How many Animate triggers have reached an object so far. */
@@ -3694,6 +3714,11 @@ export class TriggerRuntime {
    */
   animationStartOf(index: number): number {
     return this.visual.animationStarts.get(index) ?? Number.NaN;
+  }
+
+  /** The latest Animate clip command for a beast, or null. */
+  skeletonAnimOf(index: number): { id: number; gen: number } | null {
+    return this.visual.skeletonAnims.get(index) ?? null;
   }
 
   /**
@@ -4948,10 +4973,13 @@ export class TriggerRuntime {
     this.levelTime = levelTime;
     this.levelTimeStopped = false;
     // The reset puts every object that waits for an Animate trigger back to
-    // waiting, and the checkpoint has no animation state to give back.
+    // waiting, and beasts back on their default clip; the checkpoint has no
+    // animation state to give back.
     // [PlayLayer::resetLevel :105839-105843 → EnhancedGameObject::resetObject
-    //  :170043-170067 → waitForAnimationTrigger]
+    //  :170043-170067 → waitForAnimationTrigger; AnimatedGameObject::
+    //  resetObject :307238-307249]
     if (this.visual.animationStarts.size > 0) this.visual.animationStarts = new Map();
+    if (this.visual.skeletonAnims.size > 0) this.visual.skeletonAnims = new Map();
     this.pendingStarts = 0;
   }
 

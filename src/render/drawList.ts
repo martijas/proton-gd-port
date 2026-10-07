@@ -69,6 +69,7 @@ import { pulseScale } from "../audio/pulse";
 import {
   animMemo,
   animTimingFor,
+  animationForID,
   entityColours,
   flashHalves,
   hash01,
@@ -77,6 +78,7 @@ import {
   skeletonFor,
   skeletonFrame,
   startSkeleton,
+  switchSkeleton,
   syncedFrame,
   type AnimFrame,
   type AnimTiming,
@@ -581,7 +583,7 @@ interface ObjectState {
   anim: Int32Array;
   /** Index into `skeletons`, or -1: a beast, whose clip runs on its own clock. */
   skel: Int32Array;
-  skeletons: { plan: SkeletonPlan; clock: SkeletonClock }[];
+  skeletons: { plan: SkeletonPlan; clock: SkeletonClock; appliedGen: number }[];
   /** Degrees a second it turns; 0 for none. */
   spinSpeed: Float32Array;
   /**
@@ -995,10 +997,18 @@ export class DrawList {
     const skel = os.skel[o];
     if (skel >= 0) {
       // A beast starts its clip over, part-way in, each time it comes back on
-      // screen, and on a restart. [AnimatedGameObject::activateObject
-      //  :307207-307219; resetObject :307238-307249]
-      const { plan, clock } = os.skeletons[skel];
+      // screen, and on a restart. An Animate trigger's key 76 switches it to
+      // a named clip once per fire. [AnimatedGameObject::activateObject
+      //  :307207-307219; resetObject :307238-307249; playAnimation
+      //  :307645-307681]
+      const entry = os.skeletons[skel];
+      const { plan, clock } = entry;
       if (os.seen[o] !== this.gather - 1 || seconds < clock.began) startSkeleton(plan, clock, seconds, o);
+      const cmd = live?.triggers.skeletonAnimOf?.(o) ?? null;
+      if (cmd && cmd.gen !== entry.appliedGen) {
+        const name = animationForID(this.level.objects[o].id, cmd.id);
+        if (name && switchSkeleton(plan, clock, name, seconds)) entry.appliedGen = cmd.gen;
+      }
       os.frame[o] = skeletonFrame(plan, clock, seconds, o);
     }
     // The turn, from the sim's clock. The game turns an object only while it
@@ -2451,7 +2461,7 @@ function emit(
   if (plan && entityColour) {
     stats.skeletons++;
     objects.skel[order] = objects.skeletons.length;
-    objects.skeletons.push({ plan, clock: { clip: 0, began: 0, rolls: 0 } });
+    objects.skeletons.push({ plan, clock: { clip: 0, began: 0, rolls: 0 }, appliedGen: 0 });
     // A beast is black because its main colour defaults to 1010, which key 21
     // overrides like any other object's; its art is not black art, whatever
     // colour type the table gives it. [customSetup setDefaultMainColorMode

@@ -319,6 +319,26 @@ test("an Animate trigger starts an animation once its object is active, and with
   assert.ok(Number.isNaN(t.animationStartOf(at + 1)));
 });
 
+test("an Animate trigger switches a beast to the clip key 76 names", () => {
+  const level = emptyLevel([
+    { id: 918, x: 300, y: 100 },
+    { id: 2047, x: 300, y: 100, props: { 123: "1" } },
+    { id: 1585, x: 15, y: 100, props: { 51: "5", 76: "1" } },
+  ]);
+  const beast = level.objects.length - 3;
+  const waiting = beast + 1;
+  level.objects[beast].groups.push(5);
+  level.objects[waiting].groups.push(5);
+  const sim = makeSim(level, undefined, { visuals: true, start: { x: 45, y: 45 } });
+  sim.step(NO_INPUT);
+  assert.deepEqual(sim.triggers.skeletonAnimOf(beast), { id: 1, gen: 1 });
+  assert.equal(sim.triggers.animationsOf(waiting), 1, "key 123 still counts");
+  assert.equal(sim.triggers.animationsOf(beast), 0, "a beast is not on the frame path");
+  const laid = sim.snapshot();
+  sim.respawnFrom(laid);
+  assert.equal(sim.triggers.skeletonAnimOf(beast), null, "a respawn clears the clip command");
+});
+
 // --- the runtime in a real level ---------------------------------------------
 
 test("a level with movement triggers actually moves something", { skip: LEVELS }, async () => {

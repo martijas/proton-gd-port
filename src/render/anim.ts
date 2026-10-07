@@ -24,10 +24,9 @@
 // not reach play: the reset before the first frame, and every restart and
 // respawn, clears them (animTimingFor).
 //
-// Not transcribed: the per-id frame choices of 1697-1699 (a random frame each
-// step), 1855 and 1858 (extra drop sprites), and the special animations of
-// 1839-1842, 2892 and 2893. The first three play the plain cycle here; the
-// last five hold their resting frame.
+// Not transcribed: the special animations of 1839-1842 (scale and opacity of
+// the ring children) and 2892 and 2893 (a 16-step spin of the colour child).
+// Those hold their resting frame.
 
 import type { LevelObject } from "../level/types";
 import { GAME_ANIMATIONS, type GameAnimation } from "../assets/gameAnimations";
@@ -63,11 +62,13 @@ export interface ObjectAnimation {
   framesFor(resting: string, detail: boolean): readonly AnimFrame[] | null;
 }
 
-/** Ids whose special animation is not transcribed: they hold their resting frame. [usesSpecialAnimation :621886-621895] */
+/** Ids whose special animation is not transcribed: they hold their resting frame. [usesSpecialAnimation :621886-621895; 1839-1842 :621486-621565; 2892/2893 :620889-620948] */
 const UNPORTED_SPECIAL: ReadonlySet<number> = new Set([1839, 1840, 1841, 1842, 2892, 2893]);
 const LAVA_IDS: ReadonlySet<number> = new Set([1591, 1593]);
 /** The animations lava plays, by its state: 1 is the surface, 2 and 3 the two bubbles. [:621381-621392] */
 const LAVA_PLAYS = [2058, 2059, 2060] as const;
+/** 1697 picks a random frame each step rather than walking the cycle. [:621459-621482] */
+const RANDOM_FRAME_ID = 1697;
 
 const FRAME_SUFFIX = /_\d{3}\.png$/;
 const pad3 = (n: number): string => String(n).padStart(3, "0");
@@ -149,6 +150,24 @@ export function objectAnimationFor(id: number, exists: (frame: string) => boolea
     byResting.set("smallCoin_01_highlight_001.png", valid(sheet("_highlight")));
     main = null;
     colour = null;
+  } else if (id === 1855) {
+    // Child tag 2 carries an extra drop sheet: frames 1-7 stay on 001, 8-16
+    // walk 008-016. Both the main and the colour sprite hang a placeholder
+    // explosion child that plays these. [updateSyncedAnimation :620775-620874]
+    const drop2 = (stem: string): AnimFrame[] =>
+      Array.from({ length: entry.frames }, (_, i) => {
+        const n = i + 1;
+        return { f: `${stem}_${pad3(n >= 8 ? n : 1)}.png`, flip: false };
+      });
+    byResting.set("explosion_01_007.png", valid(drop2("gj_drops05_2")));
+    byResting.set("explosion_01_007.png\0D", valid(drop2("gj_drops05_2_color")));
+  } else if (id === 1858) {
+    // Three layers walk together: main, child 2, child 3. [updateSyncedAnimation
+    //  :621047-621108]
+    const layer = (stem: string): AnimFrame[] =>
+      Array.from({ length: entry.frames }, (_, i) => ({ f: `${stem}_${pad3(i + 1)}.png`, flip: false }));
+    byResting.set("gj_drops06_2_001.png", valid(layer("gj_drops06_2")));
+    byResting.set("gj_drops06_3_001.png", valid(layer("gj_drops06_3")));
   }
   main = valid(main);
   colour = valid(colour);
@@ -159,6 +178,7 @@ export function objectAnimationFor(id: number, exists: (frame: string) => boolea
     time: entry.time,
     lava: null,
     framesFor(resting: string, detail: boolean): readonly AnimFrame[] | null {
+      if (detail && byResting.has(`${resting}\0D`)) return byResting.get(`${resting}\0D`) ?? null;
       if (byResting.has(resting)) return byResting.get(resting) ?? null;
       const family = familyOf(resting);
       if (family === name && family === color) return detail ? colour : main;
@@ -236,6 +256,8 @@ export interface AnimTiming {
   lavaLoops: boolean;
   /** 1591's first play is rolled too, as in play; the editor's starts on the surface. */
   lavaRollsFirst: boolean;
+  /** 1697: each clock step picks a random frame instead of the sequential one. */
+  randomFrame: boolean;
   /** What stands in for the game's rand(): the object's place in the level string. */
   seed: number;
 }
@@ -342,6 +364,7 @@ export function animTimingFor(object: LevelObject, animation: ObjectAnimation, e
     lava: animation.lava,
     lavaLoops: id === 1593,
     lavaRollsFirst: !editor,
+    randomFrame: id === RANDOM_FRAME_ID,
     seed,
   };
   const slots = slotCount(timing);
@@ -417,41 +440,64 @@ export function syncedFrame(s: AnimTiming, t: number, triggeredAt = Number.NaN, 
   const slots = slotCount(s);
   const first = s.firstBlank;
 
+  let frame: number;
   if (s.onTrigger) {
     // One play: hidden from the first blank slot on.
     const k = frameCount(s, u);
     if (first >= 0 && first <= k) return -1;
-    return frameOfSlot(s, slots, slotAt(s, slots, k));
-  }
-  if (!s.freeze || first < 0) return frameOfSlot(s, slots, slotAt(s, slots, frameCount(s, u)));
-
-  // A freeze loop. The blank slots come every `slots` counts from the first;
-  // at each the clock stops for that loop's pause, then runs on through the
-  // rest of the blank slot and into the next loop.
-  const hidden = s.keepFrozenFrame ? n - 1 : -1;
-  if (s.single > 0 && !s.offsetAnim) return hidden; // pinned to the blank slot: it pauses once and never moves again
-  let j = 0;
-  let paused = 0;
-  if (memo && Number.isFinite(memo[0]) && u >= memo[2]) {
-    j = memo[0];
-    paused = memo[1];
-  }
-  for (;;) {
-    const clock = (first + j * slots) * s.interval;
-    const pauseAt = clock + paused;
-    if (u < pauseAt) break;
-    const pause = 0.2 + 0.5 * hash01(s.seed, j + 1);
-    if (u < pauseAt + pause) return hidden;
-    paused += pause;
-    j++;
-    if (memo) {
-      memo[0] = j;
-      memo[1] = paused;
-      memo[2] = pauseAt + pause;
+    frame = frameOfSlot(s, slots, slotAt(s, slots, k));
+  } else if (!s.freeze || first < 0) {
+    frame = frameOfSlot(s, slots, slotAt(s, slots, frameCount(s, u)));
+  } else {
+    // A freeze loop. The blank slots come every `slots` counts from the first;
+    // at each the clock stops for that loop's pause, then runs on through the
+    // rest of the blank slot and into the next loop.
+    const hidden = s.keepFrozenFrame ? n - 1 : -1;
+    if (s.single > 0 && !s.offsetAnim) return hidden; // pinned to the blank slot: it pauses once and never moves again
+    let j = 0;
+    let paused = 0;
+    if (memo && Number.isFinite(memo[0]) && u >= memo[2]) {
+      j = memo[0];
+      paused = memo[1];
     }
+    for (;;) {
+      const clock = (first + j * slots) * s.interval;
+      const pauseAt = clock + paused;
+      if (u < pauseAt) break;
+      const pause = 0.2 + 0.5 * hash01(s.seed, j + 1);
+      if (u < pauseAt + pause) return hidden;
+      paused += pause;
+      j++;
+      if (memo) {
+        memo[0] = j;
+        memo[1] = paused;
+        memo[2] = pauseAt + pause;
+      }
+    }
+    const slot = slotAt(s, slots, frameCount(s, u - paused));
+    frame = slot === slots ? hidden : frameOfSlot(s, slots, slot);
   }
-  const slot = slotAt(s, slots, frameCount(s, u - paused));
-  return slot === slots ? hidden : frameOfSlot(s, slots, slot);
+  if (s.randomFrame && frame >= 0) return randomSyncedFrame(s, frame, memo);
+  return frame;
+}
+
+/**
+ * 1697: each time the clock advances a frame, pick 1, 2 or 3 at random
+ * (thirds of a roll, and never the same as the last). memo[0]/[1] hold the
+ * last sequential frame and the last pick. [updateSyncedAnimation :621459-621482]
+ */
+function randomSyncedFrame(s: AnimTiming, sequential: number, memo?: Float64Array): number {
+  if (memo && Number.isFinite(memo[0]) && memo[0] === sequential && Number.isFinite(memo[1])) {
+    return memo[1];
+  }
+  const roll = hash01(s.seed, sequential * 0x1a7 + 0x1697);
+  let pick = roll > 0.7 ? 2 : roll <= 0.35 ? 0 : 1;
+  if (memo && Number.isFinite(memo[1]) && memo[1] === pick) pick = pick === 0 ? 1 : 0;
+  if (memo) {
+    memo[0] = sequential;
+    memo[1] = pick;
+  }
+  return pick;
 }
 
 /**
@@ -593,6 +639,59 @@ export interface SkeletonPlan {
 }
 
 /**
+ * The clip name an Animate trigger's key 76 (animation id) names for a beast,
+ * or null when the id is out of range for that object. Only 918, 1584 and
+ * 2012 have a table; the others return null and the trigger does nothing to
+ * their clip. [gdp AnimatedGameObject::animationForID :307522-307629]
+ */
+export function animationForID(objectId: number, animId: number): string | null {
+  switch (objectId) {
+    case 918:
+      switch (animId) {
+        case 0: return "bite";
+        case 1: return "attack01";
+        case 2: return "attack01_end";
+        case 3: return "idle01";
+        default: return null;
+      }
+    case 1584:
+      switch (animId) {
+        case 0: return "idle01";
+        case 1: return "idle02";
+        case 2: return "idle03";
+        case 3: return "attack01";
+        case 4: return "attack02";
+        case 5: return "attack02_end";
+        case 6: return "sleep";
+        case 7: return "sleep_loop";
+        case 8: return "sleep_end";
+        case 9: return "attack02_loop";
+        default: return null;
+      }
+    case 2012:
+      switch (animId) {
+        case 0: return "idle01";
+        case 1: return "idle02";
+        case 2: return "toAttack01";
+        case 3: return "attack01";
+        case 4: return "attack02";
+        case 5: return "toAttack03";
+        case 6: return "attack03";
+        case 7: return "idle03";
+        case 8: return "fromAttack03";
+        default: return null;
+      }
+    default:
+      return null;
+  }
+}
+
+/** Object ids whose Animate trigger switches a named clip (AnimatedGameObject type 2). */
+export function animateSwitchesClip(objectId: number): boolean {
+  return objectId === 918 || objectId === 1584 || objectId === 2012;
+}
+
+/**
  * The clip an animated object plays after one that is not looped ends, given
  * one of the game's rand() rolls (0..1): the beasts go back to idle01, now
  * and then to idle02, the bat (918) to its bite, and an attack's or a
@@ -636,8 +735,14 @@ function startingClip(entity: AnimEntity): string | null {
 export function skeletonFor(entity: AnimEntity, objectId = 0): SkeletonPlan | null {
   const first = startingClip(entity);
   if (!first) return null;
-  // The starting clip and every clip the chain can reach from it.
+  // The starting clip, every clip an Animate trigger can name, and every clip
+  // the finished-chain can reach from those. [animationForID :307522-307629;
+  //  animationFinished :302092-302280]
   const names = [first];
+  for (let id = 0; id < 16; id++) {
+    const named = animationForID(objectId, id);
+    if (named && entity.animations[named] && !names.includes(named)) names.push(named);
+  }
   for (let i = 0; i < names.length; i++) {
     const clip = entity.animations[names[i]];
     if (clip.looped) continue;
@@ -695,6 +800,20 @@ export function startSkeleton(plan: SkeletonPlan, clock: SkeletonClock, seconds:
   const clip = plan.clips[0];
   clock.clip = 0;
   clock.began = seconds - hash01(seed, clock.rolls++) * clip.frames * clip.interval;
+}
+
+/**
+ * Starts a named clip from its first frame, as runAnimationForced does when
+ * an Animate trigger reaches a beast. Returns false when the plan has no
+ * such clip. [gdp AnimatedGameObject::playAnimation :307645-307681 →
+ *  CCAnimatedSprite::runAnimationForced]
+ */
+export function switchSkeleton(plan: SkeletonPlan, clock: SkeletonClock, clipName: string, seconds: number): boolean {
+  const at = plan.clips.findIndex((c) => c.name === clipName);
+  if (at < 0) return false;
+  clock.clip = at;
+  clock.began = seconds;
+  return true;
 }
 
 /**

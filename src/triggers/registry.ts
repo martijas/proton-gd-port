@@ -97,7 +97,7 @@ const STATUS: ReadonlyMap<number, TriggerEntry> = new Map<number, TriggerEntry>(
   [1007, DONE],
   [2903, { status: "partial", note: "drawn (render/gradients.ts): a layer per key 209, its sides from the main objects of keys 203-206 (or its corners, with key 207) and the view's edges, its colour running along the trigger's turn from key 21's channel to key 22's at their opacities and the trigger's group opacity, normal / additive / multiply / invert (key 174 0-3), over its key-202 draw layer; 208 and 508 take layers away. A screen-space layer (BG, MG, G, UI, Max) turns with the view, which the game's does not" }],
   [1520, DONE],
-  [1585, { status: "partial", note: "starts the objects that wait for it (key 123) — their frame animation from frame 1 once the object is active (in the sections round the camera), and Custom Particles; with key 214 it passes over an object that is not active. The active range is the camera's from player 1 at a 16:9 width, centred on the player up and down; switching a beast to a named clip is not built" }],
+  [1585, DONE],
 
   // --- scheduling ---
   [1049, DONE],

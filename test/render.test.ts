@@ -16,6 +16,7 @@ import type { ObjectRecord } from "../src/assets/objectTypes";
 import {
   animMemo,
   animTimingFor,
+  animationForID,
   hash01,
   nextSkeletonClip,
   objectAnimationFor,
@@ -23,6 +24,7 @@ import {
   skeletonFor,
   skeletonFrame,
   startSkeleton,
+  switchSkeleton,
   syncedFrame,
   type AnimTiming,
 } from "../src/render/anim";
@@ -403,6 +405,31 @@ test("a sprite plays the family its resting frame belongs to", () => {
   assert.equal(objectAnimationFor(2041, (n) => !n.endsWith("_012.png"))?.framesFor("gj22_anim_22_001.png", false) ?? null, null);
   // The special animations that are not transcribed hold still.
   assert.equal(objectAnimationFor(1839, everyFrame), null);
+  const drops = objectAnimationFor(1855, everyFrame);
+  assert.equal(drops?.framesFor("explosion_01_007.png", false)?.[0].f, "gj_drops05_2_001.png");
+  assert.equal(drops?.framesFor("explosion_01_007.png", false)?.[7].f, "gj_drops05_2_008.png");
+  assert.equal(drops?.framesFor("explosion_01_007.png", true)?.[15].f, "gj_drops05_2_color_016.png");
+  const spray = objectAnimationFor(1858, everyFrame);
+  assert.equal(spray?.framesFor("gj_drops06_001.png", false)?.[3].f, "gj_drops06_004.png");
+  assert.equal(spray?.framesFor("gj_drops06_2_001.png", false)?.[3].f, "gj_drops06_2_004.png");
+  assert.equal(spray?.framesFor("gj_drops06_3_001.png", false)?.[3].f, "gj_drops06_3_004.png");
+});
+
+test("1697 picks a random frame each clock step, never the same twice in a row", () => {
+  const s = { ...timingOf(1697), interval: Math.fround(0.06) };
+  assert.equal(s.randomFrame, true);
+  const memo = animMemo();
+  const seen = new Set();
+  let prev = -1;
+  for (let t = 0; t < 3; t += 0.06) {
+    const k = syncedFrame(s, t, Number.NaN, memo);
+    assert.ok(k >= 0 && k <= 2, `frame ${k}`);
+    if (prev >= 0) assert.notEqual(k, prev, "not the same as the last");
+    prev = k;
+    seen.add(k);
+    assert.equal(syncedFrame(s, t + 0.01, Number.NaN, memo), k, "stable within a step");
+  }
+  assert.ok(seen.size >= 2, "more than one frame turns up");
 });
 
 test("a plain cycle: the level time in frame times, round and round", () => {
@@ -1282,10 +1309,30 @@ test("a beast starts on its definition's clip: the bat bites, its jaws opening w
   assert.ok(plan);
   assert.equal(plan.clips[0].name, "bite");
   assert.equal(plan.clips[0].looped, true);
+  assert.deepEqual(
+    plan.clips.map((c) => c.name).sort(),
+    ["attack01", "attack01_end", "attack01_loop", "bite", "idle01"],
+  );
+  assert.equal(animationForID(918, 1), "attack01");
+  assert.equal(animationForID(1584, 7), "sleep_loop");
+  assert.equal(animationForID(2012, 5), "toAttack03");
+  assert.equal(animationForID(1327, 0), null);
   const jaw = plan.slots.find((s) => s.tag === 1);
   assert.ok(jaw);
   const turns = jaw.frames.slice(0, plan.clips[0].frames).map((f) => f?.rot ?? 0);
   assert.ok(Math.max(...turns) - Math.min(...turns) > 30, `the jaw swings wide: ${Math.min(...turns)}..${Math.max(...turns)}`);
+});
+
+test("an Animate trigger switches a beast to the named clip from frame 1", { skip: existsSync(animPath("GJBeast01")) ? false : "run `npm run build` first" }, () => {
+  const plan = skeletonFor(readEntity("GJBeast01"), 918);
+  assert.ok(plan);
+  const clock = { clip: 0, began: 0, rolls: 0 };
+  startSkeleton(plan, clock, 5, 3);
+  assert.equal(plan.clips[clock.clip].name, "bite");
+  assert.ok(switchSkeleton(plan, clock, "attack01", 8));
+  assert.equal(plan.clips[clock.clip].name, "attack01");
+  assert.equal(clock.began, 8);
+  assert.equal(skeletonFrame(plan, clock, 8, 3), plan.clips[clock.clip].start, "from the first frame");
 });
 
 test("a beast's idle that ends picks the next by a roll, and idle02 always goes back to idle01", () => {
