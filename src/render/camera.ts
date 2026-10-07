@@ -214,6 +214,15 @@ export interface CameraTriggerState {
   levelEnd: number | null;
   /** Counts the Rotate Gameplay triggers with key 368, each of which snaps the gameplay offset to where it is heading. */
   leadSnap: number;
+  /**
+   * How far the player is kept behind the view's centre along the way it
+   * travels, and whether that distance is already in world units. Defaults
+   * GAMEPLAY_OFFSET_X (75) and false; the Gameplay Offset trigger (2901) sets them.
+   */
+  gameplayOffsetX: number;
+  gameplayOffsetY: number;
+  gameplayOffsetXRaw: boolean;
+  gameplayOffsetYRaw: boolean;
   /** Camera Mode's easing (1..40) and padding (0..1). */
   followDivisor: number;
   padding: number;
@@ -424,6 +433,11 @@ export class Camera {
   /** The Rotate Gameplay key-368 count the runtime has, and the one the follow has acted on. */
   leadSnap = 0;
   private leadSnapSeen = 0;
+  /** The Gameplay Offset trigger's values; see CameraTriggerState. */
+  gameplayOffsetX = GAMEPLAY_OFFSET_X;
+  gameplayOffsetY = GAMEPLAY_OFFSET_X;
+  gameplayOffsetXRaw = false;
+  gameplayOffsetYRaw = false;
   /**
    * How a mode other than the cube and the robot follows when no corridor
    * holds it: the easing divides the tick as FOLLOW_DIVISOR does, and the
@@ -555,6 +569,10 @@ export class Camera {
       this.levelTop = MAX_GAMEPLAY_Y_DEFAULT;
       this.levelEnd = null;
       this.leadSnap = this.leadSnapSeen;
+      this.gameplayOffsetX = GAMEPLAY_OFFSET_X;
+      this.gameplayOffsetY = GAMEPLAY_OFFSET_X;
+      this.gameplayOffsetXRaw = false;
+      this.gameplayOffsetYRaw = false;
       this.followDivisor = FOLLOW_DIVISOR;
       this.padding = FOLLOW_PADDING;
       this.minLeft = LEVEL_START_LEFT;
@@ -594,6 +612,10 @@ export class Camera {
     this.levelEnd = other.levelEnd;
     this.leadSnap = other.leadSnap;
     this.leadSnapSeen = other.leadSnapSeen;
+    this.gameplayOffsetX = other.gameplayOffsetX;
+    this.gameplayOffsetY = other.gameplayOffsetY;
+    this.gameplayOffsetXRaw = other.gameplayOffsetXRaw;
+    this.gameplayOffsetYRaw = other.gameplayOffsetYRaw;
     this.followDivisor = other.followDivisor;
     this.padding = other.padding;
     this.minLeft = other.minLeft;
@@ -639,6 +661,10 @@ export class Camera {
     this.levelTop = state.levelTop;
     this.levelEnd = state.levelEnd;
     this.leadSnap = state.leadSnap;
+    this.gameplayOffsetX = state.gameplayOffsetX;
+    this.gameplayOffsetY = state.gameplayOffsetY;
+    this.gameplayOffsetXRaw = state.gameplayOffsetXRaw;
+    this.gameplayOffsetYRaw = state.gameplayOffsetYRaw;
     this.followDivisor = state.followDivisor;
     this.padding = state.padding;
     this.minLeft = state.minLeft;
@@ -690,7 +716,17 @@ export class Camera {
     const halfH = high / 2;
     const rotated = player.rotated;
     const travel = rotated ? 1 : 0;
-    const leadTarget = (GAMEPLAY_OFFSET_X * (player.reversed ? -1 : 1)) / zoom;
+    // The Gameplay Offset trigger sets the design-unit distance (default 75);
+    // with its raw flag the value is already in world units. Rotated gameplay
+    // uses the Y pair. [gdp updateCamera :449670-449689]
+    const go = rotated
+      ? this.gameplayOffsetYRaw
+        ? this.gameplayOffsetY
+        : this.gameplayOffsetY / zoom
+      : this.gameplayOffsetXRaw
+        ? this.gameplayOffsetX
+        : this.gameplayOffsetX / zoom;
+    const leadTarget = go * (player.reversed ? -1 : 1);
     const limits = this.limits(halfW, halfH);
     const basic = player.mode === "cube" || player.mode === "robot";
     const flying = player.mode === "ship" || player.mode === "ufo" || player.mode === "wave" || player.mode === "swing";

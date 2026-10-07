@@ -749,6 +749,9 @@ export class SimImpl implements Sim, PlayerWorld {
     p.rotated = s.rotated;
     p.setMode(s.mode);
     p.setSpeed(s.speed);
+    // resetObject restores the Gravity trigger's multiplier to 1.
+    // [gdp PlayerObject::resetObject :153603]
+    p.gravityMod = 1;
     // resetObject sets the scale to 0.6 and grows the player back from it, so
     // a platformer starts with the grown-back snap armed. The platformer flag
     // is already set by then. [gdp PlayerObject::resetObject, gd-ida-decomp.cpp:
@@ -803,6 +806,7 @@ export class SimImpl implements Sim, PlayerWorld {
     this.takeCameraMode();
     this.takeRotations();
     this.takeTeleports();
+    this.takePlayer();
     if (this.takeEnd()) return;
     this.syncGeometry(false);
   }
@@ -923,6 +927,7 @@ export class SimImpl implements Sim, PlayerWorld {
     this.takeRotations();
     this.takeCameraMode();
     this.takeTeleports();
+    this.takePlayer();
   }
 
   /**
@@ -1288,6 +1293,7 @@ export class SimImpl implements Sim, PlayerWorld {
     if (this.takeEnd()) return;
     this.takeRotations();
     this.takeTeleports();
+    this.takePlayer();
     this.takeCameraMode();
     this.takeGroundRefresh();
     this.syncGeometry();
@@ -1373,6 +1379,7 @@ export class SimImpl implements Sim, PlayerWorld {
     //  checkSpawnObjects]
     this.takeRotations();
     this.takeTeleports();
+    this.takePlayer();
     trig.checkPassed(p1.x, p1.y, p1.rotated);
     trig.endStep();
     // The camera's tweens, where the game steps them: after the pass-by
@@ -1385,6 +1392,7 @@ export class SimImpl implements Sim, PlayerWorld {
     this.takeGroundRefresh();
     this.takeRotations();
     this.takeTeleports();
+    this.takePlayer();
     if (this.takeEnd()) return;
     // A speed portal's speed, queued in the collision pass, reaches player 1
     // and, in a dual, player 2 at the top of the next sub-step, whichever of
@@ -1468,6 +1476,7 @@ export class SimImpl implements Sim, PlayerWorld {
     this.takeGroundRefresh();
     this.takeRotations();
     this.takeTeleports();
+    this.takePlayer();
     this.takeEnd();
   }
 
@@ -1516,6 +1525,65 @@ export class SimImpl implements Sim, PlayerWorld {
     if (pending.length === 0) return;
     for (const tp of pending) this.teleportPlayer(this.p1, tp.object, tp.target);
     pending.length = 0;
+  }
+
+  /**
+   * Gravity (2066), Player Control (1932) and Reverse (1917) that fired since
+   * the last look, oldest first. The game applies each inside its trigger; the
+   * sim takes them at the same points as teleports. Reverse is a no-op in a
+   * platformer. [gdp reverseDirection :416188-416196 → reversePlayer
+   *  :148361-148392; activatePlayerControlTrigger :421196-421248;
+   *  triggerGravityChange :422792-422818]
+   */
+  private takePlayer(): void {
+    const pending = this.triggers.pendingPlayer;
+    if (pending.length === 0) return;
+    for (const r of pending) {
+      if (r.kind === "reverse") {
+        if (this.platformer) continue;
+        this.p1.doReversePlayer(!this.p1.reversed);
+        if (this.p2) this.p2.doReversePlayer(!this.p2.reversed);
+        continue;
+      }
+      if (r.kind === "gravity") {
+        if (r.p1) this.p1.gravityMod = r.value;
+        if (r.p2 && this.p2) this.p2.gravityMod = r.value;
+        continue;
+      }
+      // control
+      if (r.p1) this.applyPlayerControl(this.p1, r);
+      if (r.p2 && this.p2) this.applyPlayerControl(this.p2, r);
+    }
+    pending.length = 0;
+  }
+
+  /**
+   * One player's share of a Player Control trigger: release the jump, the
+   * directions, the spin and/or the force slide. [gdp activatePlayerControlTrigger
+   *  :421196-421248; handlePlayerCommand(543) :142373-142379]
+   */
+  private applyPlayerControl(
+    p: Player,
+    r: { jump: boolean; move: boolean; rotation: boolean; slide: boolean },
+  ): void {
+    if (r.jump) {
+      p.releaseButton();
+      // The release clears holding; leave rawHeld up so a still-down key has
+      // no rising edge in processButtons (spawn-queue control runs before the
+      // buttons). The next real press needs a release first.
+      p.rawHeld = true;
+    }
+    if (r.move && this.platformer) {
+      p.leftHeld = false;
+      p.rightHeld = false;
+      p.leftRaw = true;
+      p.rightRaw = true;
+    }
+    if (r.rotation) p.stopRotation();
+    if (r.slide) {
+      p.isAccelerating = false;
+      p.forceSlide = false;
+    }
   }
 
   /**
@@ -1647,22 +1715,31 @@ export class SimImpl implements Sim, PlayerWorld {
   private processButtons(p: Player, input: PlayerInput, raise: boolean): void {
     const player = p === this.p1 ? 1 : 2;
     if (raise && this.platformer) {
-      if (input.left !== p.leftHeld) {
+      if (input.left !== p.leftRaw) {
         this.triggers.gameEvent(input.left ? EVENT_LEFT_PUSH : EVENT_LEFT_RELEASE, 0, player);
         this.touchButton(input.left, player);
       }
-      if (input.right !== p.rightHeld) {
+      if (input.right !== p.rightRaw) {
         this.triggers.gameEvent(input.right ? EVENT_RIGHT_PUSH : EVENT_RIGHT_RELEASE, 0, player);
         this.touchButton(input.right, player);
       }
     }
-    // A direction pressed since the last step is the one pressed last; both at
-    // once, and right counts as the later. [gdp PlayerObject::switchedDirTo,
-    // gd-ida-decomp.cpp:159446-159466, from pushButton :160534-160536]
-    if (input.left && !p.leftHeld) p.leftPressedLast = true;
-    if (input.right && !p.rightHeld) p.leftPressedLast = false;
-    p.leftHeld = input.left;
-    p.rightHeld = input.right;
+    // Directions follow the jump's raw/held split: a rising edge engages,
+    // a falling edge lets go, and a Player Control Stop Move can clear the
+    // held flag without touching the raw one so a still-down key does not
+    // re-engage until it is released and pressed again.
+    // [gdp PlayerObject::switchedDirTo :159446-159466, from pushButton
+    //  :160534-160536; activatePlayerControlTrigger → releaseButton 2/3/5]
+    if (input.left && !p.leftRaw) {
+      p.leftHeld = true;
+      p.leftPressedLast = true;
+    } else if (!input.left && p.leftRaw) p.leftHeld = false;
+    if (input.right && !p.rightRaw) {
+      p.rightHeld = true;
+      p.leftPressedLast = false;
+    } else if (!input.right && p.rightRaw) p.rightHeld = false;
+    p.leftRaw = input.left;
+    p.rightRaw = input.right;
     const held = input.jump;
     const tap = input.tap === true;
     p.holdTicks = held ? (p.holdTicks < 0 || tap ? 0 : p.holdTicks + 1) : -1;

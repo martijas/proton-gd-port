@@ -333,9 +333,10 @@ export class Player implements PlayerState {
   gravity = SPEED_PARAMS[1].gravity;
   speedMultiplier = SPEED_PARAMS[1].speedMultiplier;
   /**
+  /**
    * +2356, the Gravity trigger's (2066) multiplier. It scales gravity and the
-   * cube's spin rate; the trigger is not implemented, so it stays 1.
-   * [gdp updateJump :155468-155475, runNormalRotation :144538; resetObject :153603]
+   * cube's spin rate. [gdp updateJump :155468-155475, runNormalRotation
+   *  :144538; resetObject :153603; triggerGravityChange :422792-422818]
    */
   gravityMod = 1;
 
@@ -371,6 +372,15 @@ export class Player implements PlayerState {
   /** +2225 and +2224: the platformer's left and right buttons are down. */
   leftHeld = false;
   rightHeld = false;
+  /**
+   * The direction input as the last step left it, the pair of jump's rawHeld:
+   * a Player Control Stop Move clears leftHeld/rightHeld without touching
+   * these, so a held key does not re-engage until it is released and pressed
+   * again. [gdp activatePlayerControlTrigger :421196-421248 → releaseButton
+   *  cases 2/3/5 :159527-159545]
+   */
+  leftRaw = false;
+  rightRaw = false;
   /**
    * +2226: of the two direction buttons, left was pressed last, so it wins
    * while both are down. [gdp PlayerObject::switchedDirTo,
@@ -2460,6 +2470,8 @@ export class Player implements PlayerState {
     this.touchedTeleportRing = o.touchedTeleportRing;
     this.leftHeld = o.leftHeld;
     this.rightHeld = o.rightHeld;
+    this.leftRaw = o.leftRaw;
+    this.rightRaw = o.rightRaw;
     this.leftPressedLast = o.leftPressedLast;
     this.onGround2 = o.onGround2;
     this.maybeIsBoosted = o.maybeIsBoosted;
@@ -2591,6 +2603,7 @@ export class Player implements PlayerState {
       h = Math.imul(h ^ Math.round(this.reverseOffset * 4096) ^ 0x02000000, 0x01000193);
       h = Math.imul(h ^ Math.round(this.reverseSlice * 4096), 0x01000193);
     }
+    if (this.gravityMod !== 1) h = Math.imul(h ^ Math.round(this.gravityMod * 4096) ^ 0x05000000, 0x01000193);
     return Math.imul(h ^ letters ^ 0x30000000, 0x01000193);
   }
 }

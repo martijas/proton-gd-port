@@ -675,6 +675,25 @@ export interface CameraModeRequest {
   noSnap: boolean;
 }
 
+/**
+ * What Gravity (2066), Player Control (1932) and Reverse (1917) ask the sim to
+ * do to the players. Taken within the step or the level spawn that fired them.
+ * [gdp reverseDirection :416188-416196; activatePlayerControlTrigger
+ *  :421196-421248; triggerGravityChange :422792-422818]
+ */
+export type PlayerRequest =
+  | { kind: "reverse" }
+  | { kind: "gravity"; value: number; p1: boolean; p2: boolean }
+  | {
+      kind: "control";
+      p1: boolean;
+      p2: boolean;
+      jump: boolean;
+      move: boolean;
+      rotation: boolean;
+      slide: boolean;
+    };
+
 interface CameraState {
   /**
    * The live zoom (float 82) and its tween (0xE). Each of the trigger tweens
@@ -729,6 +748,17 @@ interface CameraState {
   levelEnd: number | null;
   /** Counts the Rotate Gameplay triggers whose key 368 snaps the camera's gameplay offset. [gdp rotateGameplay :442856-442860] */
   leadSnap: number;
+  /**
+   * How far the player is kept behind the view's centre along the way it
+   * travels (+580 / +588), and whether that distance is already in world
+   * units rather than design units over the zoom (+584 / +592). Defaults
+   * 75 and false; the Gameplay Offset trigger (2901) sets them.
+   * [gdp updateGameplayOffsetX/Y :430003-430047; updateCamera :449670-449689]
+   */
+  gameplayOffsetX: number;
+  gameplayOffsetY: number;
+  gameplayOffsetXRaw: boolean;
+  gameplayOffsetYRaw: boolean;
   /**
    * How far the middleground is moved up (+604), and its tween (0x14): the
    * MG trigger (2999) eases it to its key 29. Stepped with the camera's.
@@ -805,6 +835,10 @@ function newCamera(levelTop: number, levelEnd: number | null, minLeft: number | 
     levelTop,
     levelEnd,
     leadSnap: 0,
+    gameplayOffsetX: GAMEPLAY_OFFSET_X,
+    gameplayOffsetY: GAMEPLAY_OFFSET_X,
+    gameplayOffsetXRaw: false,
+    gameplayOffsetYRaw: false,
     mgOffsetY: 0,
     mgOffsetTween: null,
     bgSpeedX: 0.1,
@@ -1215,8 +1249,13 @@ export class TriggerRuntime {
   tick = 0;
   /** 0.1 to 2. Below 1 the sim shrinks each step's game time to it (see Sim.step). */
   timeWarp = 1;
-  /** Set by a Player Control or Reverse trigger; the sim reads it. */
-  playerReversed: boolean | null = null;
+  /**
+   * Gravity (2066), Player Control (1932) and Reverse (1917) triggers that
+   * have fired, oldest first, for the sim to apply to the players. The game
+   * applies each inside its trigger; they are taken within the step or the
+   * level spawn that fired them.
+   */
+  readonly pendingPlayer: PlayerRequest[] = [];
   /**
    * Teleport triggers (3022) that have fired, oldest first, for the sim to
    * run through teleportPlayer: each trigger's object index and the object its
@@ -1531,6 +1570,7 @@ export class TriggerRuntime {
     this.pendingCameraMode = null;
     this.pendingGround = null;
     this.pendingRotations.length = 0;
+    this.pendingPlayer.length = 0;
     this.toggleGen = s.toggleGen;
     this.rng.setSeed(s.seed);
     this.timeWarp = s.timeWarp;
@@ -1818,6 +1858,11 @@ export class TriggerRuntime {
     }
     cam.edgeLeft = cam.edgeRight = cam.edgeTop = cam.edgeBottom = 0;
     cam.limitLeft = cam.limitRight = cam.limitTop = cam.limitBottom = null;
+    // [gdp resetCamera :451344-451345 → restoreDefaultGameplayOffsetX/Y]
+    cam.gameplayOffsetX = GAMEPLAY_OFFSET_X;
+    cam.gameplayOffsetY = GAMEPLAY_OFFSET_X;
+    cam.gameplayOffsetXRaw = false;
+    cam.gameplayOffsetYRaw = false;
   }
 
   /**
@@ -3309,6 +3354,23 @@ export class TriggerRuntime {
       case 2899:
         this.runOptions(spec);
         return;
+      case 2901: {
+        // Keys 28/29 are the new offsets (as ints), key 101 picks the axes
+        // (1 = x only, 2 = y only), and keys 58/59 keep them in world units
+        // rather than dividing by the zoom. [gdp EffectGameObject::triggerObject
+        //  :314914-314922 → updateGameplayOffsetX/Y :430003-430047;
+        //  customObjectSetup :298850-298874]
+        const axis = int(spec, 101);
+        if (axis !== 2) {
+          this.camera.gameplayOffsetX = Math.trunc(num(spec, 28));
+          this.camera.gameplayOffsetXRaw = flag(spec, 58);
+        }
+        if (axis !== 1) {
+          this.camera.gameplayOffsetY = Math.trunc(num(spec, 29));
+          this.camera.gameplayOffsetYRaw = flag(spec, 59);
+        }
+        return;
+      }
 
       // --- items and counters ---
       case 1611:
@@ -3353,11 +3415,46 @@ export class TriggerRuntime {
         return;
       }
       case 1917:
-        this.playerReversed = true;
+        // [gdp GJBaseGameLayer::reverseDirection :416188-416196]
+        this.pendingPlayer.push({ kind: "reverse" });
         return;
-      case 1932:
-        if (flag(spec, 543)) this.playerReversed = null;
+      case 1932: {
+        // Key 138 alone is player 1, key 200 alone player 2, both or neither
+        // both. [gdp GJBaseGameLayer::activatePlayerControlTrigger
+        //  :421196-421248; PlayerControlGameObject::customObjectSetup
+        //  :301348-301384]
+        const only1 = flag(spec, 138);
+        const only2 = flag(spec, 200);
+        this.pendingPlayer.push({
+          kind: "control",
+          p1: only1 || !only2,
+          p2: only2 || !only1,
+          jump: flag(spec, 540),
+          move: flag(spec, 541),
+          rotation: flag(spec, 542),
+          slide: flag(spec, 543),
+        });
         return;
+      }
+      case 2066: {
+        // Key 201 is the player that set it off. Otherwise player 1 unless
+        // key 200 alone, player 2 unless key 138 alone — so with both set,
+        // neither. Key 148 is held to 0.1..2, and is 0.1 when not above it.
+        // [gdp GJBaseGameLayer::triggerGravityChange :422792-422818;
+        //  EffectGameObject::customObjectSetup :298930-298953]
+        const g = num(spec, 148, 0);
+        const value = g > 0.1 ? Math.min(g, 2) : 0.1;
+        const only1 = flag(spec, 138);
+        const only2 = flag(spec, 200);
+        const byPlayer = flag(spec, 201);
+        this.pendingPlayer.push({
+          kind: "gravity",
+          value: Math.fround(value),
+          p1: byPlayer ? player === 1 : !only2,
+          p2: byPlayer ? player === 2 : !only1,
+        });
+        return;
+      }
       case 2900: {
         // Key 171 switches the channel first, whatever key 172 says; the
         // players turn after, unless key 172 leaves them. The pass-by check
@@ -3646,7 +3743,9 @@ export class TriggerRuntime {
     const zoom = Math.min(8, Math.max(0.1, cam.zoom));
     const high = VIEW_UNITS_HIGH / zoom;
     const wide = (high * 16) / 9;
-    const lead = ((this.viewReversed ? -1 : 1) * GAMEPLAY_OFFSET_X) / zoom;
+    const go = this.passRotated ? cam.gameplayOffsetY : cam.gameplayOffsetX;
+    const raw = this.passRotated ? cam.gameplayOffsetYRaw : cam.gameplayOffsetXRaw;
+    const lead = ((this.viewReversed ? -1 : 1) * go) / (raw ? 1 : zoom);
     let cx = (cam.staticX.on ? cam.staticX.target : this.viewX + (this.passRotated ? 0 : lead)) + cam.offsetX;
     let cy = (cam.staticY.on ? cam.staticY.target : this.viewY + (this.passRotated ? lead : 0)) + cam.offsetY;
     const right = this.edgeValue(cam.edgeRight, 0);
