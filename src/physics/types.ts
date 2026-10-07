@@ -344,6 +344,16 @@ export interface SimCheats {
   noclip: boolean;
   /** A fresh press jumps in the air as it would on the ground. */
   jumpHack: boolean;
+  /**
+   * Multiplies the player's hitbox (and its inner death box). 1 is unchanged.
+   * The mod menu's Hitbox Multiplier sets it.
+   */
+  hitboxScale: number;
+  /**
+   * Solids and slopes do not collide; hazards, orbs, pads and portals still
+   * do. The mod menu's No Solids sets it.
+   */
+  noSolids: boolean;
 }
 
 export interface SimOptions {

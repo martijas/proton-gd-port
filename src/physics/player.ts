@@ -160,6 +160,8 @@ export interface PlayerWorld {
   readonly fixGravityBug: boolean;
   /** The mod menu's jump hack (SimCheats.jumpHack); absent is off. */
   readonly jumpHack?: boolean;
+  /** The mod menu's hitbox multiplier (SimCheats.hitboxScale); absent is 1. */
+  readonly hitboxScale?: number;
   /**
    * +2072 on both players, "boost slide": a platformer push slides out at
    * 0.05 a step whether or not a button is held. !kA45 at every reset, and
@@ -886,7 +888,8 @@ export class Player implements PlayerState {
    *  the scale togglePlayerScale writes :150441-150442]
    */
   hitboxSize(): number {
-    return this.boxSize() * this.vehicleSize();
+    const scale = this.world.hitboxScale ?? 1;
+    return this.boxSize() * this.vehicleSize() * scale;
   }
 
   /**
@@ -896,7 +899,8 @@ export class Player implements PlayerState {
    * gd-ida-decomp.cpp:170812-170848; called from collidedWithObjectInternal :152369]
    */
   innerSize(): number {
-    return this.boxSize() * INNER_HITBOX_FACTOR;
+    const scale = this.world.hitboxScale ?? 1;
+    return this.boxSize() * INNER_HITBOX_FACTOR * scale;
   }
 
   /**

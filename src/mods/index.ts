@@ -5,7 +5,7 @@
 // step with, how fast to run, whether the run may save.
 
 import type { Game } from "../game/game";
-import { TICK_RATE, type PlayerInput, type Sim } from "../physics/types";
+import { NO_INPUT, TICK_RATE, type PlayerInput, type Sim } from "../physics/types";
 import type { Speed } from "../level/types";
 import type { KeyValueStore } from "../save/store";
 import { clock } from "../ui/chrome";
@@ -18,9 +18,29 @@ import { modDef, ModStore } from "./state";
 
 const SPEED_NAMES: Record<Speed, string> = { 0: "0.5x", 1: "1x", 2: "2x", 3: "3x", 4: "4x" };
 const STATUS_INTERVAL_MS = 100;
+const TRAJECTORY_INTERVAL_MS = 50;
+/** How far ahead Show Trajectory looks, in ticks (~0.75 s). */
+const TRAJECTORY_TICKS = 180;
+const HOLD_INPUT: PlayerInput = Object.freeze({ jump: true, left: false, right: false });
 const DOT_SAVES = "#4dff6a";
 const DOT_CHEATING = "#ff4040";
 const DOT_NOT_SAVING = "#ffb040";
+
+/** Walk the sim ahead under one input, then put it back. Centres of the player box. */
+function predictPath(sim: Sim, input: PlayerInput, ticks: number): Array<readonly [number, number]> {
+  const snap = sim.snapshot();
+  const pts: Array<readonly [number, number]> = [];
+  const start = sim.playerRect(1);
+  pts.push([start.x + start.w / 2, start.y + start.h / 2]);
+  for (let i = 0; i < ticks; i++) {
+    if (sim.state.dead || sim.state.finished) break;
+    sim.step(input, sim.state2 ? input : undefined);
+    const r = sim.playerRect(1);
+    pts.push([r.x + r.w / 2, r.y + r.h / 2]);
+  }
+  sim.restore(snap);
+  return pts;
+}
 
 function typing(target: EventTarget | null): boolean {
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
@@ -38,6 +58,9 @@ export class Mods {
   /** Steps the frame stepper has been asked for and not yet run. */
   private steps = 0;
   private statusAt = 0;
+  private trajAt = 0;
+  private holdPath: ReadonlyArray<readonly [number, number]> = [];
+  private releasePath: ReadonlyArray<readonly [number, number]> = [];
   private autoClickTicks = 0;
 
   constructor(storage: KeyValueStore) {
@@ -219,6 +242,8 @@ export class Mods {
   prepare(sim: Sim): void {
     sim.cheats.noclip = this.on("noclip");
     sim.cheats.jumpHack = this.on("jumpHack");
+    sim.cheats.noSolids = this.on("noSolids");
+    sim.cheats.hitboxScale = this.on("hitboxMult") ? this.value("hitboxMult") : 1;
   }
 
   /** The buttons to step with: a playback's, the auto clicker's, or the player's own, noted by a recording. */
@@ -263,8 +288,21 @@ export class Mods {
     }
     const objects = this.on("showHitboxes") || (this.on("hitboxesOnDeath") && sim.state.dead);
     const trail = this.on("hitboxTrail");
-    if (objects || trail) this.hitboxes?.draw(sim, game.scene, objects, trail);
-    else this.hitboxes?.clear();
+    const trajectory = this.on("showTrajectory") && !sim.state.dead;
+    if (trajectory) {
+      const now = performance.now();
+      if (now - this.trajAt >= TRAJECTORY_INTERVAL_MS) {
+        this.trajAt = now;
+        this.holdPath = predictPath(sim, HOLD_INPUT, TRAJECTORY_TICKS);
+        this.releasePath = predictPath(sim, NO_INPUT, TRAJECTORY_TICKS);
+      }
+    } else {
+      this.holdPath = [];
+      this.releasePath = [];
+    }
+    if (objects || trail || trajectory) {
+      this.hitboxes?.draw(sim, game.scene, objects, trail, trajectory ? this.holdPath : null, trajectory ? this.releasePath : null);
+    } else this.hitboxes?.clear();
     if (this.session.noclipHitNow) {
       this.session.noclipHitNow = false;
       if (this.on("noclipFlash") && this.on("noclip")) this.flash?.flash();

@@ -642,7 +642,7 @@ export class SimImpl implements Sim, PlayerWorld {
     this.collSet = this.objs;
     this.objState = new Uint8Array(this.objs.slotCount);
     this.stamp = new Int32Array(this.objs.n);
-    this.cheats = { noclip: opts.noclip === true, jumpHack: false };
+    this.cheats = { noclip: opts.noclip === true, jumpHack: false, hitboxScale: 1, noSolids: false };
     this.practice = opts.practice === true;
     const coins: number[] = [];
     for (let i = 0; i < this.baseObjs.n; i++) {
@@ -1184,6 +1184,10 @@ export class SimImpl implements Sim, PlayerWorld {
 
   get jumpHack(): boolean {
     return this.cheats.jumpHack;
+  }
+
+  get hitboxScale(): number {
+    return this.cheats.hitboxScale;
   }
 
   finishNow(): void {
@@ -2237,6 +2241,8 @@ export class SimImpl implements Sim, PlayerWorld {
         py1 = p.y + half;
       }
       if (kind === K_SLOPE) {
+        // Mod menu No Solids: slopes do not collide; hazards and specials still do.
+        if (this.cheats.noSolids) continue;
         // A slope is looked for with a box twice its own size.
         // [getObjectRect(2, 2), gd-ida-decomp.cpp:463444-463447]
         const ex = (o.x1[i] - o.x0[i]) * 0.5;
@@ -2277,7 +2283,8 @@ export class SimImpl implements Sim, PlayerWorld {
 
     // C. Solids, the last one met first, each against the box as the one
     // before left it; touching counts. [:464974-465003]
-    for (let k = n - 1; k >= 0; k--) {
+    // Mod menu No Solids skips this pass; hazards below still kill.
+    if (!this.cheats.noSolids) for (let k = n - 1; k >= 0; k--) {
       const i = cand[k];
       if (o.kind[i] !== K_SOLID) continue;
       const slot = o.slot[i];

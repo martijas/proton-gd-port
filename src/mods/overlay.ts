@@ -23,6 +23,9 @@ const KIND_COLOUR: Partial<Record<ObjectKind, string>> = {
 const PLAYER_OUTER = "#ff3030";
 const PLAYER_INNER = "#3f8cff";
 const TRAIL_COLOUR = "rgba(255, 80, 80, 0.45)";
+/** Hold-jump path (Mega Hack green) and release path (red). */
+const HOLD_PATH = "rgba(80, 255, 120, 0.85)";
+const RELEASE_PATH = "rgba(255, 80, 80, 0.85)";
 /** One and a half seconds of the hitbox trail. */
 const TRAIL_TICKS = 360;
 
@@ -63,7 +66,14 @@ export class HitboxLayer {
     this.drawn = false;
   }
 
-  draw(sim: Sim, scene: Scene, objects: boolean, trail: boolean): void {
+  draw(
+    sim: Sim,
+    scene: Scene,
+    objects: boolean,
+    trail: boolean,
+    holdPath: ReadonlyArray<readonly [number, number]> | null = null,
+    releasePath: ReadonlyArray<readonly [number, number]> | null = null,
+  ): void {
     this.fit();
     const ctx = this.ctx;
     const dpr = window.devicePixelRatio || 1;
@@ -90,6 +100,8 @@ export class HitboxLayer {
         this.shape(scene, shape);
       }
     }
+    if (releasePath && releasePath.length > 1) this.path(scene, releasePath, RELEASE_PATH);
+    if (holdPath && holdPath.length > 1) this.path(scene, holdPath, HOLD_PATH);
     ctx.lineWidth = 1.5;
     for (const which of sim.state2 ? ([1, 2] as const) : ([1] as const)) {
       ctx.strokeStyle = PLAYER_OUTER;
@@ -97,6 +109,19 @@ export class HitboxLayer {
       ctx.strokeStyle = PLAYER_INNER;
       this.rect(scene, sim.playerInnerRect(which), 0);
     }
+  }
+
+  private path(scene: Scene, pts: ReadonlyArray<readonly [number, number]>, colour: string): void {
+    const ctx = this.ctx;
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => {
+      const [sx, sy] = this.point(scene, x, y);
+      if (i === 0) ctx.moveTo(sx, sy);
+      else ctx.lineTo(sx, sy);
+    });
+    ctx.stroke();
   }
 
   private fit(): void {

@@ -57,6 +57,23 @@ export const MODS: readonly ModDef[] = [
   // Player
   { id: "noclip", label: "Noclip", window: "player", kind: "toggle", cheat: true, tip: "Nothing can kill you." },
   { id: "jumpHack", label: "Jump Hack", window: "player", kind: "toggle", cheat: true, tip: "Jump again in mid-air." },
+  { id: "noSolids", label: "No Solids", window: "player", kind: "toggle", cheat: true, tip: "Blocks and slopes don't stop you. Spikes and orbs still work." },
+  {
+    id: "hitboxMult",
+    label: "Hitbox Multiplier",
+    window: "player",
+    kind: "toggle",
+    cheat: true,
+    tip: "Makes your hitbox bigger or smaller.",
+    value: { min: 0.1, max: 3, step: 0.1, initial: 1, suffix: "x" },
+  },
+  {
+    id: "showTrajectory",
+    label: "Show Trajectory",
+    window: "player",
+    kind: "toggle",
+    tip: "Draws where you'll go if you hold jump, and if you don't.",
+  },
   {
     id: "autoClicker",
     label: "Auto Clicker",
@@ -332,14 +349,14 @@ export class ModStore {
   }
 
   /**
-   * The cheats switched on right now, by name. The speedhack at 1x changes
-   * nothing, so it is not one.
+   * The cheats switched on right now, by name. The speedhack at 1x and the
+   * hitbox multiplier at 1x change nothing, so they are not ones.
    */
   activeCheats(): string[] {
     const out: string[] = [];
     for (const m of MODS) {
       if (!m.cheat || m.kind !== "toggle" || !this.on(m.id)) continue;
-      if (m.id === "speedhack" && this.value(m.id) === 1) continue;
+      if ((m.id === "speedhack" || m.id === "hitboxMult") && this.value(m.id) === 1) continue;
       out.push(m.label);
     }
     return out;
