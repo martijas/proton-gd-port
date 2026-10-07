@@ -38,6 +38,11 @@ const PAUSE_ALPHA = 75 / 255;
 /** The attempt label in a run from a start position. [gdp PlayLayer::setupHasCompleted :106462-106463, opacity 50 of 255] */
 const TEST_LABEL_ALPHA = 50 / 255;
 
+/** The StartPos Switcher's row, centred at the foot of the screen. */
+const STARTPOS_Y = 22;
+const STARTPOS_ARROW_GAP = 50;
+const STARTPOS_ARROW_SCALE = 0.5;
+
 /**
  * The whole percentage the game reads off player 1's progress, in its float
  * arithmetic: `(float)(x / length) * 100`, rounded down.
@@ -305,6 +310,16 @@ export class PlayScreen implements Screen {
 
     if (hud && !mods.on("hidePause")) out.push(...spriteButton(art, "pause", w - 15, h - 15, FRAMES.pause, { alpha: PAUSE_ALPHA, sizeMult: 1.6 }));
 
+    // The StartPos Switcher: which start position this attempt began from
+    // (0 is the level's own start) out of how many, between two arrows.
+    const starts = hud && mods.on("startposSwitcher") ? this.game.startPositions() : [];
+    if (starts.length > 0) {
+      const at = starts.indexOf(sim.startPosition) + 1;
+      out.push(...spriteButton(art, "startposPrev", w / 2 - STARTPOS_ARROW_GAP, STARTPOS_Y, FRAMES.arrowGreen, { scale: STARTPOS_ARROW_SCALE, sizeMult: 1.8 }));
+      out.push(label(art, `${at}/${starts.length}`, w / 2, STARTPOS_Y, { scale: 0.6 }));
+      out.push(...spriteButton(art, "startposNext", w / 2 + STARTPOS_ARROW_GAP, STARTPOS_Y, FRAMES.arrowGreen, { scale: STARTPOS_ARROW_SCALE, sizeMult: 1.8, flipX: true }));
+    }
+
     if (run.practice && hud) {
       // The game's two practice buttons, bottom right: lay a checkpoint, take
       // the last one back. [meas]
@@ -335,6 +350,10 @@ export class PlayScreen implements Screen {
     }
     if (id === "uncheckpoint") {
       this.game.removeCheckpoint();
+      return true;
+    }
+    if (id === "startposPrev" || id === "startposNext") {
+      this.game.switchStartPos(id === "startposPrev" ? -1 : 1);
       return true;
     }
     return false;

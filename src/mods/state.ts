@@ -124,7 +124,7 @@ export const MODS: readonly ModDef[] = [
     tip: "How long a death waits before you start over, in seconds.",
     value: { min: 0, max: 2, step: 0.1, initial: 0.3, suffix: "s" },
   },
-  { id: "startposSwitcher", label: "StartPos Switcher", window: "level", kind: "toggle", tip: "Press Q and E to pick which start position you start from." },
+  { id: "startposSwitcher", label: "StartPos Switcher", window: "level", kind: "toggle", tip: "Use the arrows at the bottom of the screen, or Q and E, to pick which start position you start from." },
   { id: "ignoreEscape", label: "Ignore Escape", window: "level", kind: "toggle", tip: "Escape doesn't pause the level." },
   { id: "noParticles", label: "No Particles", window: "level", kind: "toggle", tip: "Hides the level's particles." },
   { id: "noShaders", label: "No Screen Effects", window: "level", kind: "toggle", tip: "Turns off the level's screen effects." },

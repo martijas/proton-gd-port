@@ -201,6 +201,8 @@ export class Mods {
     if (!game?.run || !this.on("startposSwitcher")) return null;
     const all = game.startPositions();
     if (all.length === 0) return "This level has no start positions.";
+    // The switcher at the foot of the screen says it already, unless the HUD is hidden.
+    if (!this.on("hideHud")) return null;
     const at = all.indexOf(game.sim?.startPosition ?? -1);
     return at < 0 ? `Starting from the start (${all.length} start positions)` : `Start position ${at + 1} of ${all.length}`;
   }
