@@ -343,10 +343,10 @@ Still open after the final re-solve (2026-09-29):
   y at +1032), and the two Area Move triggers on those groups (#11663, #13551, id 3006), which the
   port does not build; both have key 276 = 1, which by `gd-areas.md` leaves the blocks near the
   centre where they were placed.
-- Not port bugs, but why the four tower floors have no macro: the autoplayer's `PlatformerGuide`
-  aims at the End trigger instead of the touch spawn that fires it, treats one-way blocks,
-  switched groups and doors as solid for good and the space outside the level as open, and knows
-  nothing of teleports (`test/macros/README.md`).
+- Not port bugs: Dash and The Tower (5001) have finishing macros; 5002–5004 still lack ones.
+  `PlatformerGuide` aims at the touch spawn that fires End, treats one-way/switched/moved groups
+  as passable, follows teleports, and keeps a finisher alive through the spawn delay
+  (`endingBonus`). The remaining gap is search, not physics (`test/macros/README.md`).
 - Possibly correct, not checked: a cube sliding down a wall of stacked blocks lands on a block's
   top with no horizontal overlap (touching edges count) and then cannot jump for 20+ ticks unless
   it holds away from the wall (The Sewers, x 825).

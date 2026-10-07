@@ -386,6 +386,13 @@ export class PlatformerGuide {
   /** How many cells the goals and teleport edges were placed on, for the log. */
   readonly goalCount: number;
   readonly teleportCount: number;
+  /**
+   * Groups and End-trigger objects on the spawn chain that ends the level, so
+   * a node that has already set that chain off can be kept alive through the
+   * delay.
+   */
+  private readonly endChainGroups: ReadonlySet<number>;
+  private readonly endObjects: ReadonlySet<number>;
 
   constructor(sim: Sim) {
     const objs = sim.level.objects;
@@ -491,6 +498,8 @@ export class PlatformerGuide {
     if (n > 4e6) {
       this.maxDist = 0;
       this.looseMax = 0;
+      this.endChainGroups = new Set();
+      this.endObjects = new Set();
       return;
     }
     const blocked = new Uint8Array(n);
@@ -549,7 +558,23 @@ export class PlatformerGuide {
 
     const goals: number[] = [];
     const starters = new Set<number>();
-    for (const o of objs) if (o.id === END_TRIGGER_ID) startersOf(o.index, starters, 0);
+    const endGroups = new Set<number>();
+    const endObjects = new Set<number>();
+    for (const o of objs) {
+      if (o.id !== END_TRIGGER_ID) continue;
+      endObjects.add(o.index);
+      startersOf(o.index, starters, 0);
+      for (const g of o.groups) endGroups.add(g);
+      const tgt = Number(o.props[51] ?? 0);
+      if (tgt > 0) endGroups.add(tgt);
+    }
+    for (const i of starters) {
+      endObjects.add(i);
+      for (const g of firesOf(i)) endGroups.add(g);
+      for (const g of objs[i].groups) endGroups.add(g);
+    }
+    this.endChainGroups = endGroups;
+    this.endObjects = endObjects;
     for (const i of starters) {
       const idx = this.indexOf(objs[i].x, objs[i].y);
       if (idx >= 0) goals.push(idx);
@@ -683,6 +708,23 @@ export class PlatformerGuide {
     // Any cell the strict search reaches outranks every one only the loose one does.
     if (this.dist[idx] >= 0) return (this.looseMax + 2 + this.maxDist - this.dist[idx]) * 2000;
     if (this.looseDist[idx] >= 0) return (this.looseMax + 1 - this.looseDist[idx]) * 2000;
+    return 0;
+  }
+
+  /**
+   * A node that has already touched the end spawn (or whose delayed End is
+   * queued) must outrank every node still walking toward it — the spawn's
+   * delay is many seconds, and without this the beam prunes the finisher.
+   */
+  endingBonus(sim: Sim): number {
+    const snap = sim.triggers.capture();
+    if (snap.levelTimeStopped) return 1_000_000;
+    for (const a of snap.spawns) {
+      if (this.endChainGroups.has(a.group)) return 1_000_000;
+      if (a.object >= 0 && this.endObjects.has(a.object)) return 1_000_000;
+    }
+    const idx = this.indexOf(sim.state.x, sim.state.y);
+    if (idx >= 0 && this.dist[idx] === 0) return 1_000_000;
     return 0;
   }
 }
@@ -1000,7 +1042,7 @@ export function makeRanker(
       sim.restore(snap);
       score = alive * 10 + clr;
     }
-    if (guide) score += guide.progressScore(st);
+    if (guide) score += guide.progressScore(st) + guide.endingBonus(sim);
     return { score, snap, used };
   };
 }

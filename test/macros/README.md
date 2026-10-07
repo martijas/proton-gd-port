@@ -128,12 +128,12 @@ otherwise, the default search finished the level on its first run.
 | 19 | Geometrical Dominator | finishes, tick 23255 | first finish; `--W=512 --maxW=8192`, 21 minutes |
 | 20 | Deadlocked | finishes, tick 24343 | first finish; `--W=512 --maxW=8192 --ticks=2e9 --ms=1800000`, 19 minutes, no dead end |
 | 21 | Fingerdash | finishes, tick 20610 | `--ticks=2e9 --ms=900000`, about 450 s; the default 90 s was too short |
-| 22 | Dash | finishes, tick 21462 | first finish; `--N=101 --D=8 --W=384 --maxW=2048 --ticks=4e9 --ms=5400000`, 12 minutes; see below |
+| 22 | Dash | finishes, tick 21707 | manualmacro after Time Warp; see below |
 | 3001 | The Challenge | finishes, tick 5576 | |
-| 5001 | The Tower | best 38.5 % | the platformer guide; see below |
-| 5002 | The Sewers | best 4.6 % | the same |
-| 5003 | The Cellar | best 1.6 % | the same |
-| 5004 | The Secret Hollow | best 14.1 % | the same |
+| 5001 | The Tower | finishes, tick 21729 | manualmacro; platformer guide aims at the end spawn |
+| 5002 | The Sewers | best (see below) | platformer guide; see below |
+| 5003 | The Cellar | best (see below) | the same |
+| 5004 | The Secret Hollow | best (see below) | the same |
 
 Every `.best.json` above was recorded on 2026-09-29. The final check then
 made the toggle block (3643) a custom ring, which changed the object table and
@@ -387,57 +387,34 @@ Nothing in `npm test` replays these.
   here; the search's width is what makes it about a level-second every six
   minutes.
 
-## Levels with no macro
+## Levels with no finishing macro
 
-- **5001-5004, the tower floors.** The End trigger works — each floor ends
-  when its touch-triggered spawn fires it — and none of the four fails on
-  the physics or the triggers as far as was checked. They fail on the
-  autoplayer's `PlatformerGuide`, a search over 30-unit cells that aims at
-  the End object rather than the spawn that fires it, counts the space
-  outside the level as open, counts one-way platforms, doors and switched
-  walls as solid for good, and knows nothing of teleports. More width, depth
-  or time does not change how it scores a cell. With the default `--D=4`,
-  walking right ties with jumping in place until the next cell, so the beam
-  barely moves; `--D=16` to `--D=28` avoids that. Per floor:
-  - 5001, The Tower: a three-hour run on 2026-10-02 saved 38.5 % (tick 5251,
-    small spike #4765 at x 6158) over an earlier 39.0 % (tick 8622, spike
-    #4792 at x 6255); `--save-best` now keeps the further file. That file
-    only keeps the furthest death: the live
-    beam of the same run reached x 13290 (tick 11648) without finishing. The
-    end door at x 9930-9960 (group 237) opens by toggle #8622 on the music
-    clock at about 31 s; the guide counts it solid for good, so only a step of
-    30 units or more crosses it, which needs `--D` of about 24, while `--D=30`
-    and up stalls at the house door (x 8280). Only `--D=28` with W=256 or 512
-    gets past both. The finish is touch spawn #8587 at (10151, 591) behind the
-    door, whose ordered spawn fires End trigger #8876 about 10 s later; the
-    beam held nodes that had touched it and pruned the last of them, outscored
-    by nodes heading for the End object itself. From the solver's own state at
-    the door, holding right finishes the level at tick 11210.
-  - 5002, The Sewers: runs died at 8.4 % (tick 1333, spike #1323 at
-    x 1515); a three-hour run on 2026-10-02 did worse, 4.6 % (tick 652,
-    spike #679 at x 825), and its file replaced the old one. The guide's path runs down into the spike pits and under the
-    level to the End object; the route climbs instead, under the crusher
-    pillars and up the pad shaft at x 1455/1515 to trigger orb #1728 at
-    (1579.5, 1065), whose group leads to the teleport into the tall room at
-    (1845, 135). That orb did nothing until the final check fixed it (see
-    `data/ref/boomlings-notes.md`); what comes after the tall room is not
-    checked.
-  - 5003, The Cellar: 1.6 %. The guide's shortest path goes over the start
-    room's left wall, so the cube jumps against it at x 90-150 and never dies.
-    The route goes right, up the stairs at x 495-555, through robot portal
-    #1476 at (1145, 255) and up the tower at x 1200-1710, whose one-way ledges
-    and moving parts (groups 12-18) read as solid; the End trigger is fired by
-    touch spawn #7029 at (8866.5, 1220.5). Played by hand, holding right and
-    jump climbs the stairs, turns robot and walks the tower floor to x 1695.
-  - 5004, The Secret Hollow: 14.1 % (tick 22962, spike #2641 in the pit at
-    x 4665). The route climbs a ladder of one-way blocks at x 4548-4578 and
-    walks the box roof to a touch spawn at (5025, 615) that teleports the
-    player to (5505, 585); the guide scores every spot on the ladder 0, so the
-    beam never keeps a climber. Scripted by hand from the run's own state, that
-    climb and teleport work, and a start beside the finish's touch spawn at
-    (14291, 881) completes the level.
-
-  What the guide needs: aim at the touch spawn that fires the End and keep a
-  node that has touched it alive for the spawn's delay; treat one-way blocks
-  and groups a toggle or move switches off as passable; stop counting the
-  space outside the level as open; follow teleports.
+- **5002-5004, the later tower floors.** The End trigger works — each floor
+  ends when its touch-triggered spawn fires it — and none fails on the
+  physics or the triggers as far as was checked. `PlatformerGuide` now aims
+  at that touch spawn (not the End object), treats one-way blocks and
+  switched/moved groups as passable, follows teleports, and keeps a node
+  that has touched the end spawn alive through the spawn delay
+  (`endingBonus`). The remaining gap is search: the beam still dies early
+  on routes the guide scores correctly. With the default `--D=4`, walking
+  right ties with jumping in place until the next cell; `--D=16` to
+  `--D=28` avoids that. Per floor:
+  - 5001, The Tower: finishes (manualmacro, tick 21729). The old best
+    attempts and door/D notes below are kept for history. The end door at
+    x 9930-9960 (group 237) opens by toggle #8622 on the music clock at
+    about 31 s; `--D=28` with W=256 or 512 gets past the house door and it.
+    Touch spawn #8587 at (10151, 591) fires End #8876 after an ordered
+    delay; holding right from the door finishes.
+  - 5002, The Sewers: best around 4.6 % (tick 652, spike #679 at x 825).
+    The route climbs under the crusher pillars and up the pad shaft at
+    x 1455/1515 to trigger orb #1728 at (1579.5, 1065), whose group leads
+    to the teleport into the tall room at (1845, 135).
+  - 5003, The Cellar: holding right and jump climbs the stairs, turns
+    robot and walks the tower floor to x 1695; the End is fired by touch
+    spawn #7029 at (8866.5, 1220.5). A scripted open reaches that robot
+    stretch; the search past it is still open.
+  - 5004, The Secret Hollow: best around 14.1 % (tick 22962, spike #2641
+    in the pit at x 4665). The route climbs a ladder of one-way blocks at
+    x 4548-4578 and walks the box roof to a touch spawn at (5025, 615)
+    that teleports the player to (5505, 585). A start beside the finish's
+    touch spawn at (14291, 881) completes the level.
