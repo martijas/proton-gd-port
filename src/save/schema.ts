@@ -47,6 +47,17 @@ export interface Settings {
   shaders: boolean;
   /** Whether the menus play their loop. [gdp OptionsLayer::onMenuMusic, gv 0122 inverted] */
   menuMusic: boolean;
+  /**
+   * Extra icons on orbs (Enable Orb Guide, gv 0130). Off on a fresh save.
+   * [gdp MoreOptionsLayer :363441; GJBaseGameLayer init +11165 :461924]
+   */
+  orbGuide: boolean;
+  /**
+   * Hide the mode icons on portals (Disable Portal Guide, gv 0129). Off means
+   * the icons show, as they do in the game.
+   * [gdp MoreOptionsLayer :363440; GJBaseGameLayer init +11164 :461921]
+   */
+  disablePortalGuide: boolean;
 }
 
 export type TextureQuality = "auto" | "low" | "medium" | "high";
@@ -137,6 +148,8 @@ export function defaultSettings(): Settings {
     particles: true,
     shaders: true,
     menuMusic: true,
+    orbGuide: false,
+    disablePortalGuide: false,
   };
 }
 

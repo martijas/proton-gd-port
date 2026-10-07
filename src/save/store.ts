@@ -67,6 +67,8 @@ function mergeSettings(raw: unknown, base: Settings): Settings {
     particles: bool(raw.particles, base.particles),
     shaders: bool(raw.shaders, base.shaders),
     menuMusic: bool(raw.menuMusic, base.menuMusic),
+    orbGuide: bool(raw.orbGuide, base.orbGuide),
+    disablePortalGuide: bool(raw.disablePortalGuide, base.disablePortalGuide),
   };
 }
 

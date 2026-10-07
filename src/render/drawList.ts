@@ -1393,8 +1393,10 @@ export class DrawList {
     movingGroups?: ReadonlySet<number>,
     entities?: ReadonlyMap<string, AnimEntity>,
     font?: LevelFont | null,
+    /** Orb / portal colourblind guides. Defaults match a fresh save: orbs off, portals on. */
+    guides?: { orb?: boolean; portal?: boolean },
   ): DrawList {
-    return buildDrawList(level, render, atlas, colors, movingGroups, entities, font);
+    return buildDrawList(level, render, atlas, colors, movingGroups, entities, font, guides);
   }
 }
 
@@ -1590,7 +1592,10 @@ function buildDrawList(
   movingGroups?: ReadonlySet<number>,
   entities?: ReadonlyMap<string, AnimEntity>,
   font?: LevelFont | null,
+  guides?: { orb?: boolean; portal?: boolean },
 ): DrawList {
+  const orbGuide = guides?.orb === true;
+  const portalGuide = guides?.portal !== false;
   const pending: Pending[] = [];
   const stats: DrawListStats = {
     objects: 0,
@@ -1678,7 +1683,7 @@ function buildDrawList(
       stats.spinning++;
     }
     const first = pending.length;
-    emit(object, record, root, pending, stats, atlas, colors, i, objects, anims, variable, rodBall, entities, font);
+    emit(object, record, root, pending, stats, atlas, colors, i, objects, anims, variable, rodBall, entities, font, orbGuide, portalGuide);
     const pulse = pulseKindOf(object);
     for (let p = first; p < pending.length; p++) pending[p].pulse ??= pulse;
   }
@@ -2213,6 +2218,11 @@ interface ChildAnchor {
   fy: number;
 }
 
+/** Guide icons the game hangs on orbs/portals when the matching option is on (`*_extra*`). */
+function isGuideFrame(frame: string | undefined): boolean {
+  return frame !== undefined && frame.includes("_extra");
+}
+
 function emit(
   object: LevelObject,
   record: ObjectRecord,
@@ -2228,6 +2238,8 @@ function emit(
   rodBall: string,
   entities?: ReadonlyMap<string, AnimEntity>,
   font?: LevelFont | null,
+  orbGuide = false,
+  portalGuide = true,
 ): void {
   // What push draws with. A portal's back half and a linked teleport's exit
   // are objects of their own in the game, with batches, a place and a colour
@@ -2498,8 +2510,13 @@ function emit(
   const mainFrames = mainFrame && animation ? animation.framesFor(mainFrame, mainSlot === "D") : null;
   // The object's own sprite with everything hung on it, in tree order. A
   // don't-draw main sprite still carries its glow and children. [ObjectRecord.dd]
+  // Orb/portal `*_extra*` children are addGuideArt's icons: only with the
+  // matching option. [gdp GJBaseGameLayer::addGuideArt :432889; +11164/+11165]
   const rod = ROD_IDS.has(object.id);
-  const children = rod ? (record.ch ?? []).filter((c) => !c.f?.startsWith("rod_ball_")) : (record.ch ?? []);
+  let children = record.ch ?? [];
+  if (rod) children = children.filter((c) => !c.f?.startsWith("rod_ball_"));
+  const showGuides = record.k === "orb" ? orbGuide : record.k === "portal" ? portalGuide : true;
+  if (!showGuides) children = children.filter((c) => !isGuideFrame(c.f));
   tree(children, IDENTITY, objectAlpha, PART_MAIN, () => {
     if (!record.dd) push(mainFrame, mainSlot, objectAlpha, record.bl === 1, IDENTITY, PART_MAIN, mainFrames, null, false, record.cut);
   });

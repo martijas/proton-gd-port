@@ -472,6 +472,10 @@ test("a fresh save hides the percentage and the progress bar", () => {
   // [gdp GameManager::firstLoad :114397-114426: +668 = 0, gv 0040 never set]
   assert.equal(defaultSettings().showPercentage, false);
   assert.equal(defaultSettings().showProgressBar, false);
+  // Orb guide off, portal guide on (Disable Portal Guide unchecked).
+  // [gdp GJBaseGameLayer init :461921-461925]
+  assert.equal(defaultSettings().orbGuide, false);
+  assert.equal(defaultSettings().disablePortalGuide, false);
   // Nothing in a version-1 save could turn them on but an early build's default.
   const old = migrate({ version: 1, settings: { showPercentage: true, showProgressBar: true, autoRetry: false } });
   assert.equal(old.settings.showPercentage, false, "an early build's default goes");

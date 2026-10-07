@@ -1020,6 +1020,61 @@ function portalAtlas(): AtlasSet {
 
 const portalRecord = (f: string): ObjectRecord => ({ ...baseOnly, f, zl: 5, zo: 10, bc: undefined, dc: undefined, ct: undefined });
 
+test("orb guide extras stay off until Enable Orb Guide is on; portal extras follow Disable Portal Guide", () => {
+  // [gdp addGuideArt :432889; +11165 orb (0130), +11164 portal (!0129)]
+  const frames = ["ring_02_001.png", "ring_02_extra_001.png", "portal_03_front_001.png", "portal_03_extra_001.png", "portal_03_back_001.png"];
+  const file: AtlasFile = {
+    version: 1,
+    res: "uhd",
+    pxPerUnit: 4,
+    atlases: [{ name: "t", image: "t.png", w: 1024, h: 256, frames: frames.map((n, k) => ({ n, x: k * 40, y: 0, w: 36, h: 36 })) }],
+    frames: Object.fromEntries(frames.map((n, k) => [n, [0, k]])),
+  };
+  const set = new (AtlasSet as unknown as new (f: AtlasFile) => AtlasSet)(file);
+  const table = ColorTable.resolve(makeHeader());
+  const orb: ObjectRecord = {
+    ...baseOnly,
+    k: "orb",
+    f: "ring_02_001.png",
+    ch: [{ f: "ring_02_extra_001.png", dx: 0, dy: 0, z: 0 }],
+    zl: 3,
+    zo: 12,
+    bc: undefined,
+    dc: undefined,
+    ct: undefined,
+  };
+  const portal: ObjectRecord = {
+    ...baseOnly,
+    k: "portal",
+    f: "portal_03_front_001.png",
+    ch: [{ f: "portal_03_extra_001.png", dx: 0, dy: 0, z: 0 }],
+    zl: 5,
+    zo: 10,
+    bc: undefined,
+    dc: undefined,
+    ct: undefined,
+  };
+  const level: Level = {
+    header: makeHeader(),
+    objects: [
+      { ...object(1333, {}, { x: 40, y: 40 }), index: 0 },
+      { ...object(12, {}, { x: 80, y: 40 }), index: 1 },
+    ],
+    lengthUnits: 1000,
+  };
+  const render = (id: number) => (id === 1333 ? orb : portal);
+  const count = (guides?: { orb?: boolean; portal?: boolean }) => {
+    const list = DrawList.build(level, render, set, table, undefined, undefined, undefined, guides);
+    list.visible(VIEW, liveWith(table), 0);
+    return list.visibleCount;
+  };
+  // Defaults: orb guide off (1 sprite), portal guide on (front + extra + back = 3).
+  assert.equal(count(), 4);
+  assert.equal(count({ orb: false, portal: true }), 4);
+  assert.equal(count({ orb: true, portal: true }), 5, "orb guide adds the extra");
+  assert.equal(count({ orb: false, portal: false }), 3, "no portal extra; back half remains");
+});
+
 test("every portal draws its back half under the player, at its order less 100, in no colour", () => {
   // [PlayLayer::addObject :90062-90250: the back is an object of its own on
   //  layer 4 at the portal's order − 100; the portal's own order becomes 12]

@@ -125,6 +125,10 @@ export class Scene {
   readonly playerParticles = new PlayerParticles();
   /** The player's own effects, which the settings screen can turn off. */
   particlesEnabled = true;
+  /** Enable Orb Guide (gv 0130); off by default. */
+  orbGuide = false;
+  /** Portal mode icons show unless Disable Portal Guide (gv 0129) is on. */
+  portalGuide = true;
   /** The shader triggers' screen effects, which the settings screen can turn off. */
   effectsEnabled = true;
   /** The mod menu's look switches; none of them changes what the player hits. */
@@ -460,7 +464,10 @@ export class Scene {
     // the same sorted array as everything else, so they cannot arrive later
     // without rebuilding it.
     await this.loadEntitiesFor(level, render);
-    this.list = DrawList.build(level, render, atlas, this.colors, index?.movingGroups, this.entities, this.font);
+    this.list = DrawList.build(level, render, atlas, this.colors, index?.movingGroups, this.entities, this.font, {
+      orb: this.orbGuide,
+      portal: this.portalGuide,
+    });
     this.player.setAtlas(atlas);
     // Custom Particles carry their own definition in the level string, so the
     // emitters come out of the level rather than out of the asset build.

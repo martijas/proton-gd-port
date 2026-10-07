@@ -243,6 +243,8 @@ export class Game {
 
     this.scene.particlesEnabled = this.save.get().settings.particles;
     this.scene.effectsEnabled = this.save.get().settings.shaders;
+    this.scene.orbGuide = this.save.get().settings.orbGuide;
+    this.scene.portalGuide = !this.save.get().settings.disablePortalGuide;
 
     this.input.attach(this.canvas);
     this.mods.attach(this);
@@ -321,6 +323,10 @@ export class Game {
     this.jumpsPending = 0;
     this.startPosChoice = undefined;
     this.mods.levelEntered();
+    // Guide art is baked into the draw list; read the options before the bake.
+    const settings = this.save.get().settings;
+    this.scene.orbGuide = settings.orbGuide;
+    this.scene.portalGuide = !settings.disablePortalGuide;
     await this.scene.setLevel(level, this.objects.render, this.atlas, null);
     // Every icon the level can turn the player into, loaded now rather than
     // on the first portal, so entering a mode never blinks the player out
@@ -828,6 +834,8 @@ export class Game {
     const settings = this.save.get().settings;
     this.scene.particlesEnabled = settings.particles && !mods.on("noParticles");
     this.scene.effectsEnabled = settings.shaders && !mods.on("noShaders");
+    this.scene.orbGuide = settings.orbGuide;
+    this.scene.portalGuide = !settings.disablePortalGuide;
     const look = this.scene.mods;
     look.hidePlayer = mods.on("hidePlayer");
     look.noShake = mods.on("noShake");
