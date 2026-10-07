@@ -36,10 +36,15 @@ export { VIEW_UNITS_HIGH, VIEW_UNITS_WIDE };
 export const GAMEPLAY_OFFSET_X = 75;
 /**
  * The dead zone the player is kept inside, measured from the centre of the
- * view. Swapped when gravity is flipped. [gdp updateCamera :449691-449721]
+ * view. Swapped when gravity is flipped. A platformer uses the tighter pair.
+ * [gdp updateCamera :449691-449721]
  */
 export const DEAD_ZONE_UP = 70;
 export const DEAD_ZONE_DOWN = 40;
+export const DEAD_ZONE_PLATFORMER_UP = 55;
+export const DEAD_ZONE_PLATFORMER_DOWN = 27.5;
+/** Platformer travel-axis easing. Classic snaps (1). [gdp :449722-449726] */
+export const PLATFORMER_TRAVEL_DIVISOR = 8;
 /**
  * The vertical follow divides the tick's own 60 Hz delta — 0.25 at 240 Hz — by
  * this, so the camera closes 2.5% of the gap a tick. It is also the default
@@ -892,6 +897,7 @@ export class Camera {
         a.lead = lead;
         a.leadTarget = leadTarget;
         target = at + lead + offset;
+        if (this.platformer) divisor = PLATFORMER_TRAVEL_DIVISOR;
       } else if (floorHold && i === 1) {
         // The view's bottom on the floor, plus the offset. [:450040-450048,
         // with the follow's divisor of 10]
@@ -899,13 +905,15 @@ export class Camera {
         divisor = FOLLOW_DIVISOR;
       } else {
         // The dead zone (the cube and the robot), or the padded free follow.
-        // The player is compared with the centre both carrying the offset.
+        // A platformer's dead zone is 55 / 27.5 instead of 70 / 40.
         // [:449695-449733, :450212-450296]
         let up: number;
         let down: number;
         if (basic) {
-          up = player.flipped ? DEAD_ZONE_DOWN : DEAD_ZONE_UP;
-          down = player.flipped ? DEAD_ZONE_UP : DEAD_ZONE_DOWN;
+          const zoneUp = this.platformer ? DEAD_ZONE_PLATFORMER_UP : DEAD_ZONE_UP;
+          const zoneDown = this.platformer ? DEAD_ZONE_PLATFORMER_DOWN : DEAD_ZONE_DOWN;
+          up = player.flipped ? zoneDown : zoneUp;
+          down = player.flipped ? zoneUp : zoneDown;
           divisor = FOLLOW_DIVISOR;
         } else {
           const designHalf = (i === 0 ? this.designWide : this.designHigh) / 2;

@@ -118,9 +118,12 @@ const STATUS: ReadonlyMap<number, TriggerEntry> = new Map<number, TriggerEntry>(
   [1814, DONE],
   [3022, { status: "partial", note: "to its group's object as it stands now, with keep-x/y, gravity, the push along the exit and the camera keys (55, 464, 510); the force and dash redirects (keys 347-350, 591) are not built" }],
   [3033, { status: "partial", note: "runs the keyframes' path with their easing, curves, time modes, spins, scales, close loop and spawns, and the trigger's mods; a scale is not turned with a rotated group, and a newer rotation does not take over an older one's group" }],
-  [3016, { status: "todo", note: "advanced follow is a separate solver, not the command machinery" }],
-  [3660, { status: "todo", note: "edits an advanced-follow command, which does not exist yet" }],
-  [3661, { status: "todo", note: "re-targets an advanced-follow command, which does not exist yet" }],
+  [3016, {
+    status: "partial",
+    note: "modes 0–2 per-object velocity steering; delayed position history and enter-effect group copies are not built",
+  }],
+  [3660, DONE],
+  [3661, DONE],
   [3006, AREA_MOTION],
   [3007, AREA_MOTION],
   [3008, AREA_MOTION],
@@ -145,10 +148,10 @@ const STATUS: ReadonlyMap<number, TriggerEntry> = new Map<number, TriggerEntry>(
   [1817, DONE],
   [3619, { status: "partial", note: "items, points, the level time and the attempt are read and items, timers and points written; timers are stored but do not run (3614)" }],
   [3620, DONE],
-  [3641, { status: "todo", note: "persistent items need the save file, which is goal 6" }],
+  [3641, DONE],
   [1815, DONE],
   [3609, DONE],
-  [3655, { status: "todo", note: "per-object control has no owner in this design yet" }],
+  [3655, { status: "unsupported", note: "the game's activateObjectControlTrigger is empty in 2.206; the editor popup only offers a Target ID" }],
 
   // --- camera ---
   [1913, DONE],
@@ -157,7 +160,7 @@ const STATUS: ReadonlyMap<number, TriggerEntry> = new Map<number, TriggerEntry>(
   [2015, DONE],
   [2062, DONE],
   [2016, { status: "unsupported", note: "an editor guide: it does nothing at runtime in the game either" }],
-  [2925, { status: "partial", note: "free mode and the grid snap switch the corridor as a portal does, and the easing and padding shape the free follow of the modes other than the cube and robot; the corridor lock itself is the port's own approach rather than the game's eased static y, and the platformer camera is not built" }],
+  [2925, { status: "partial", note: "free mode and the grid snap switch the corridor as a portal does, and the easing and padding shape the free follow of the modes other than the cube and robot; the corridor lock itself is the port's own approach rather than the game's eased static y; a platformer's dead zone (55/27.5) and travel divisor (8) are built" }],
   [2900, {
     status: "partial",
     note: "turns the player, flips its gravity, reverses it and hands its forward speed over to the new axis, collides it against the level in its own frame, and switches the gameplay channel (keys 171-173) so a turned section fires along the way the player now travels; the camera follows along the new axis, and key 368 snaps its gameplay offset. The view itself is turned by Camera Rotate (2015), as in the game",
@@ -174,7 +177,7 @@ const STATUS: ReadonlyMap<number, TriggerEntry> = new Map<number, TriggerEntry>(
   [1935, DONE],
   [2066, DONE],
   [2899, { status: "partial", note: "all fourteen settings are read as the tri-states they are; the ones this build can act on are the ground, the two players and the controls" }],
-  [3613, { status: "todo", note: "shows a UI element, which this build has none of" }],
+  [3613, { status: "partial", note: "layout at load pins the target group to the screen about the UI target with X/Y ref and aspect scale (positionUIObjects); the objects stay in the world draw list rather than a separate UI layer, and mid-level re-fire only notes the event" }],
   [3614, { status: "partial", note: "runs, stops at its target and spawns there; key 469 (ignore time warp) divides the warp back out, which the decompile does not show" }],
   [3615, DONE],
   [3617, DONE],
@@ -189,8 +192,8 @@ const STATUS: ReadonlyMap<number, TriggerEntry> = new Map<number, TriggerEntry>(
   [2999, DONE],
   [3606, DONE],
   [3612, DONE],
-  [1818, { status: "todo", note: "the background effect layer is not built" }],
-  [1819, { status: "todo", note: "the background effect layer is not built" }],
+  [1818, DONE],
+  [1819, DONE],
 
   // --- particles ---
   [2065, { status: "partial", note: "the emitter runs with the game's fades, friction, restarts and colour options, and follows its object's place, turn and scale as its position type says, and draws in its object's layer; a respawn starts every emitter over, where the game's side of that is not traced" }],

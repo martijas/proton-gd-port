@@ -1361,6 +1361,7 @@ export class Scene {
     if (!sim || !this.playerParticles.ready) return 0;
     const visual = this.live?.triggers.visual;
     if (visual?.hidePlayer || visual?.options.hidePlayer1 || this.mods.hidePlayer) return 0;
+    if (visual?.bgEffectHidden) return 0;
     if (!this.particlesEnabled) return 0;
     const colours = this.colors;
     const strong = playerChannelColours(colours ? colours.iconColour(1) : DEFAULT_ICON_1, colours ? colours.iconColour(2) : DEFAULT_ICON_2);

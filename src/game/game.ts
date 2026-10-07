@@ -424,6 +424,7 @@ export class Game {
       // resets rather than rebuilds, so some of them carry over.
       // [gdp resetLevelVariables :462991-462996]
       const previous = this.sim?.level === run.level ? this.sim.triggers.visual.shader : undefined;
+      const persistent = this.sim?.level === run.level ? this.sim.triggers.persistentCarry() : undefined;
       sim = createSim(run.level, this.objects.table, {
         visuals: true,
         attempt: run.attempt,
@@ -432,6 +433,7 @@ export class Game {
         player2: this.strings.playerColour(look.colour2),
         practice: run.practice,
         shader: previous,
+        persistent,
         startPosition: this.mods.on("startposSwitcher") ? this.startPosChoice : undefined,
       });
       if (sim.startPosition >= 0) run.startState = { sim, snapshot: sim.snapshot() };

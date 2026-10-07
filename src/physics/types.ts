@@ -407,6 +407,11 @@ export interface SimOptions {
    *  :462991-462996]
    */
   shader?: ShaderState;
+  /**
+   * Persistent item/timer values from the previous attempt of this visit.
+   * [gdp GJEffectManager::transferPersistentItems]
+   */
+  persistent?: import("../triggers/persistent").PersistentCarry;
 }
 
 /**

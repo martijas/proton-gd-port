@@ -632,6 +632,7 @@ export class SimImpl implements Sim, PlayerWorld {
       attempt: opts.attempt,
       changes22,
       shader: opts.shader,
+      persistent: opts.persistent,
       levelTop: this.maxGameplayY,
       fromStartPosition: startPos !== null || opts.start !== undefined,
     });

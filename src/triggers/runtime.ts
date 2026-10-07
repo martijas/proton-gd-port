@@ -62,6 +62,19 @@ import {
   type AreaRandom,
   variance,
 } from "./area";
+import {
+  AdvancedFollowSystem,
+  cloneAdvFollow,
+  type AdvFollowHost,
+  type AdvFollowSnapshot,
+} from "./advancedFollow";
+import {
+  applyPersistentTrigger,
+  transferPersistent,
+  persistentSpecOf,
+  type PersistentCarry,
+} from "./persistent";
+import { uiKeysOf, uiOffsetFromCentre, type UiAnchor } from "./uiLayout";
 import { flag, hsvOf, idList, int, isSpawnableTrigger, num, type TriggerIndex, type TriggerSpec } from "./spec";
 import {
   buildKeyframePath,
@@ -334,6 +347,11 @@ export interface VisualState {
   /** Whether the player is drawn at all. */
   hidePlayer: boolean;
   /**
+   * BG Effect Off/On (1819/1818): hides the player's trail/dust particle system.
+   * [gdp PlayLayer::toggleBGEffectVisibility :92292-92303]
+   */
+  bgEffectHidden: boolean;
+  /**
    * The screen effects: one value per parameter, eased by the shader
    * triggers, and the draw layers they reach.
    */
@@ -523,6 +541,11 @@ export interface TriggerOptions {
    * PlayLayer::addObject :90313-90314]
    */
   fromStartPosition?: boolean;
+  /**
+   * Persistent item/timer values from the previous attempt of this visit.
+   * [gdp GJEffectManager::transferPersistentItems]
+   */
+  persistent?: PersistentCarry;
 }
 
 interface SpawnAction {
@@ -999,6 +1022,8 @@ export interface TriggerSnapshot {
   spawns: SpawnAction[];
   items: Map<number, number>;
   timers: Map<number, number>;
+  persistentItems: Map<number, number>;
+  persistentTimers: Map<number, number>;
   timerRuns: Map<number, TimerRun>;
   timerWatches: TimerWatch[];
   countListeners: CountListener[];
@@ -1015,6 +1040,8 @@ export interface TriggerSnapshot {
   yHistoryAt: number;
   yHistoryClock: number;
   followDy: Float64Array | null;
+  advFollow: AdvFollowSnapshot | null;
+  advMotion: Float64Array | null;
   onDeath: readonly number[];
   toggleGen: number;
   seed: number;
@@ -1096,6 +1123,12 @@ export class TriggerRuntime {
   private spawns: SpawnAction[] = [];
   private items = new Map<number, number>();
   private timers = new Map<number, number>();
+  /** Item ids marked Persistent Item Setup so a death restart keeps them. */
+  private persistentItems = new Map<number, number>();
+  /** Timer ids marked the same way. */
+  private persistentTimers = new Map<number, number>();
+  /** UI Trigger layout: object index -> anchor for screen pinning. */
+  private uiAnchors = new Map<number, UiAnchor>();
   /** How each timer a Time trigger started runs; a timer missing here stands still. */
   private timerRuns = new Map<number, TimerRun>();
   /** Armed Time Event triggers, oldest first. */
@@ -1176,6 +1209,9 @@ export class TriggerRuntime {
    */
   private followDy: Float64Array | null = null;
   private readonly followGroups = new Set<number>();
+  private advFollow: AdvancedFollowSystem | null = null;
+  /** Per-object advanced-follow push: dx, dy, extra rotation. */
+  private advMotion: Float64Array | null = null;
   /**
    * The running area triggers, highest key 341 first, and what they did to
    * each object this step. The offsets are built fresh each step, as the game
@@ -1348,6 +1384,13 @@ export class TriggerRuntime {
       this.areaRand = areaRandom(level.objects.length);
       break;
     }
+    for (const spec of index.byObject.values()) {
+      if (spec.id !== 3016 && spec.id !== 3660 && spec.id !== 3661) continue;
+      if (!this.areaRand) this.areaRand = areaRandom(level.objects.length);
+      if (!this.advFollow) this.advFollow = new AdvancedFollowSystem();
+      if (!this.advMotion) this.advMotion = new Float64Array(level.objects.length * 3);
+      break;
+    }
     this.colors = ColorTable.resolve(level.header, { player1: opts.player1, player2: opts.player2 });
     this.visual = {
       background: level.header.background,
@@ -1358,6 +1401,7 @@ export class TriggerRuntime {
       shakeRemaining: 0,
       ghostTrail: false,
       hidePlayer: false,
+      bgEffectHidden: false,
       shader: opts.shader && this.visuals ? carriedShaderState(opts.shader) : createShaderState(),
       gradients: [],
       options: defaultOptions(level.header),
@@ -1377,6 +1421,8 @@ export class TriggerRuntime {
     this.buildCollisionIndex();
     this.touching = new Uint8Array(this.collisionPairs.length);
     this.resetGroups();
+    this.layoutUIObjects();
+    if (opts.persistent) this.applyPersistentCarry(opts.persistent);
   }
 
   /**
@@ -1453,12 +1499,20 @@ export class TriggerRuntime {
     this.spawns = this.spawns.map((s) => ({ ...s }));
     this.items = new Map(this.items);
     this.timers = new Map(this.timers);
+    this.persistentItems = new Map(this.persistentItems);
+    this.persistentTimers = new Map(this.persistentTimers);
     this.timerRuns = new Map(this.timerRuns);
     this.timerWatches = this.timerWatches.map((w) => ({ ...w }));
     this.countListeners = this.countListeners.map((l) => ({ ...l }));
     this.eventStamps = new Map(this.eventStamps);
     if (this.yHistory) this.yHistory = this.yHistory.slice();
     if (this.followDy) this.followDy = this.followDy.slice();
+    if (this.advMotion) this.advMotion = this.advMotion.slice();
+    if (this.advFollow) {
+      const snap = this.advFollow.capture();
+      this.advFollow = new AdvancedFollowSystem();
+      this.advFollow.restore(snap);
+    }
     if (this.areas.length > 0) this.areas = this.areas.map(cloneArea);
     this.onDeath = [...this.onDeath];
     this.shared = false;
@@ -1489,6 +1543,8 @@ export class TriggerRuntime {
       spawns: this.spawns,
       items: this.items,
       timers: this.timers,
+      persistentItems: this.persistentItems,
+      persistentTimers: this.persistentTimers,
       timerRuns: this.timerRuns,
       timerWatches: this.timerWatches,
       countListeners: this.countListeners,
@@ -1505,6 +1561,8 @@ export class TriggerRuntime {
       yHistoryAt: this.yHistoryAt,
       yHistoryClock: this.yHistoryClock,
       followDy: this.followDy,
+      advFollow: this.advFollow ? this.advFollow.capture() : null,
+      advMotion: this.advMotion,
       onDeath: this.onDeath,
       toggleGen: this.toggleGen,
       seed: this.rng.seed,
@@ -1529,7 +1587,11 @@ export class TriggerRuntime {
     // The transform arrays are forked as a set, so one reference comparison
     // says whether anything moved between here and the snapshot. A beam-search
     // branch that only pressed a button rebuilds no geometry at all.
-    const moved = this.groupM !== s.groupM || this.followDy !== s.followDy || this.areaOffsets !== s.areaOffsets;
+    const moved =
+      this.groupM !== s.groupM ||
+      this.followDy !== s.followDy ||
+      this.advMotion !== s.advMotion ||
+      this.areaOffsets !== s.areaOffsets;
     this.areas = s.areas as AreaInstance[];
     this.areaOffsets = s.areaOffsets;
     this.areaVisuals = s.areaVisuals;
@@ -1553,6 +1615,8 @@ export class TriggerRuntime {
     this.spawns = s.spawns;
     this.items = s.items;
     this.timers = s.timers;
+    this.persistentItems = s.persistentItems;
+    this.persistentTimers = s.persistentTimers;
     this.timerRuns = s.timerRuns;
     this.timerWatches = s.timerWatches;
     this.countListeners = s.countListeners;
@@ -1569,6 +1633,12 @@ export class TriggerRuntime {
     this.yHistoryAt = s.yHistoryAt;
     this.yHistoryClock = s.yHistoryClock;
     this.followDy = s.followDy;
+    if (s.advFollow) {
+      if (!this.advFollow) this.advFollow = new AdvancedFollowSystem();
+      this.advFollow.restore(s.advFollow);
+    } else if (this.advFollow) this.advFollow.restore(cloneAdvFollow({ instances: [], physics: new Map(), dirtySort: false, nextOrdinal: 0 }));
+    this.advMotion = s.advMotion;
+    if (s.advMotion && !this.advMotion) this.advMotion = s.advMotion.slice();
     this.onDeath = s.onDeath;
     // The other requests are taken within the step or the level spawn that
     // made them, so no snapshot holds one; a step that ended in a death
@@ -1754,6 +1824,7 @@ export class TriggerRuntime {
   stepMoves(dt: number, playerDx: number, playerDy: number, cameraDx: number, cameraDy: number, playerY: number): void {
     if (this.timers.size > 0) this.stepTimers(dt);
     if (this.commands.length > 0) this.stepCommands(dt, playerDx, playerDy, cameraDx, cameraDy, playerY);
+    else if (this.advFollow?.active) this.stepAdvFollowOnly(dt, playerY);
     if (this.areas.length > 0 || this.areaGroups.length > 0 || this.areaVisuals.size > 0) this.stepAreas(dt);
     if (this.visual.shakeRemaining > 0) {
       this.visual.shakeRemaining -= dt;
@@ -2032,10 +2103,9 @@ export class TriggerRuntime {
         this.stepOne(c, dt, playerDx, playerDy, cameraDx, cameraDy);
       }
     }
-    if (followers) {
-      this.stepPlayerFollows(dt, playerY);
-      this.stepFollows(dt, followFrom);
-    }
+    if (followers) this.stepPlayerFollows(dt, playerY);
+    this.stepAdvFollow(dt, playerY);
+    if (followers) this.stepFollows(dt, followFrom);
     let finished = false;
     for (const c of this.commands) finished ||= c.finished;
     if (finished) this.commands = this.commands.filter((c) => !c.finished);
@@ -2840,6 +2910,18 @@ export class TriggerRuntime {
       out[5] += lift;
       any = true;
     }
+    if (this.advMotion) {
+      const mot = objectIndex * 3;
+      const ax = this.advMotion[mot];
+      const ay = this.advMotion[mot + 1];
+      const ar = this.advMotion[mot + 2];
+      if (ax !== 0 || ay !== 0 || ar !== 0) {
+        out[4] += ax;
+        out[5] += ay;
+        if (ar !== 0) out[6] += ar;
+        any = true;
+      }
+    }
     if (this.areaOffsets.size > 0) {
       const area = this.areaOffsets.get(objectIndex);
       if (area) {
@@ -3253,6 +3335,15 @@ export class TriggerRuntime {
       case 1814:
         this.runFollowPlayerY(spec);
         return;
+      case 3016:
+        this.runAdvancedFollow(spec);
+        return;
+      case 3660:
+        this.runAdvancedFollowEdit(spec);
+        return;
+      case 3661:
+        this.runAdvancedFollowRetarget(spec);
+        return;
       case KEYFRAME_TRIGGER_ID:
         this.runKeyframeAnimation(spec, remap);
         return;
@@ -3516,7 +3607,30 @@ export class TriggerRuntime {
       case 1595:
         this.armTouch(spec, remap);
         return;
+      case 3641: {
+        this.fork();
+        applyPersistentTrigger(
+          persistentSpecOf(spec.props),
+          this.items,
+          this.timers,
+          this.persistentItems,
+          this.persistentTimers,
+          clampItemId,
+        );
+        return;
+      }
+      case 3655:
+        // The game's activateObjectControlTrigger is empty in 2.206.
+        // [gdp :421265-421267]
+        return;
+      case 1818:
+        this.visual.bgEffectHidden = false;
+        return;
+      case 1819:
+        this.visual.bgEffectHidden = true;
+        return;
       case 3613:
+        // Layout ran at load (positionUIObjects); firing only notes the event.
         this.events.push({ tick: this.tick, kind: "ui", id: spec.index });
         return;
 
@@ -3916,6 +4030,7 @@ export class TriggerRuntime {
     }
     this.stopCameraTweens(spec, mode, byControl);
     this.stopTouches(spec, mode, byControl);
+    this.stopAdvancedFollow(spec, mode, byControl, members);
   }
 
   /**
@@ -4134,6 +4249,78 @@ export class TriggerRuntime {
     c.fresh = false;
     this.fork();
     this.commands = [...this.commands, c];
+  }
+
+  private runAdvancedFollow(spec: TriggerSpec): void {
+    if (!this.advFollow || !this.areaRand) return;
+    this.fork();
+    this.advFollow.trigger(spec, this.advHost());
+  }
+
+  private runAdvancedFollowEdit(spec: TriggerSpec): void {
+    if (!this.advFollow || !this.areaRand) return;
+    this.fork();
+    this.advFollow.edit(spec, this.advHost(), this.rng);
+  }
+
+  private runAdvancedFollowRetarget(spec: TriggerSpec): void {
+    if (!this.advFollow) return;
+    this.fork();
+    this.advFollow.retarget(spec, this.advHost());
+  }
+
+  private stopAdvancedFollow(spec: TriggerSpec, mode: number, byControl: boolean, members: Set<number>): void {
+    if (!this.advFollow) return;
+    if (byControl) this.advFollow.control(-1, spec.target, mode);
+    else {
+      for (const index of members) {
+        const t = this.index.byObject.get(index);
+        if (t?.id === 3016) this.advFollow.control(index, -1, mode);
+      }
+    }
+  }
+
+  private stepAdvFollow(dt: number, playerY: number): void {
+    if (!this.advFollow?.active || !this.areaRand) return;
+    this.fork();
+    this.advFollow.step(Math.fround(dt * 240), this.tick, this.advHost(), this.areaRand, this.rng);
+  }
+
+  private stepAdvFollowOnly(dt: number, playerY: number): void {
+    this.fork();
+    this.stepAdvFollow(dt, playerY);
+  }
+
+  private advHost(): AdvFollowHost {
+    const self = this;
+    return {
+      grp: (id) => self.grp(id),
+      groupMembers: (g) => self.index.groups.get(g) ?? [],
+      mainObject: (g) => self.mainObject(g),
+      targetObject: (g) => self.targetObject(g),
+      objectPosition: (i) => self.objectPosition(i),
+      objectRotation: (i) => self.level.objects[i]?.rotation ?? 0,
+      objectId: (i) => self.level.objects[i]?.id ?? 0,
+      objectGroups: (i) => self.level.objects[i]?.groups ?? [],
+      specOf: (i) => self.index.byObject.get(i),
+      player1: () => [self.areaP1x, self.areaP1y],
+      player2: () => self.areaP2,
+      noteMoved: (g) => self.noteMoved(g),
+      markDirty: (g) => self.markDirty(g),
+      setMotion: (i, dx, dy, drot) => self.applyAdvMotion(i, dx, dy, drot),
+    };
+  }
+
+  private applyAdvMotion(objectIndex: number, dx: number, dy: number, drot: number): void {
+    if (!this.advMotion) this.advMotion = new Float64Array(this.level.objects.length * 3);
+    this.fork();
+    const at = objectIndex * 3;
+    this.advMotion[at] += dx;
+    this.advMotion[at + 1] += dy;
+    this.advMotion[at + 2] += drot;
+    this.motion = true;
+    for (const g of this.level.objects[objectIndex]?.groups ?? []) this.noteMoved(g);
+    for (const g of this.level.objects[objectIndex]?.groups ?? []) this.markDirty(g);
   }
 
   /**
@@ -4772,6 +4959,57 @@ export class TriggerRuntime {
     return this.items.get(clampItemId(id)) ?? 0;
   }
 
+  /**
+   * Values to hand the next attempt of this visit. [gdp transferPersistentItems]
+   */
+  persistentCarry(): PersistentCarry {
+    for (const id of this.persistentItems.keys()) this.persistentItems.set(id, this.items.get(id) ?? 0);
+    for (const id of this.persistentTimers.keys()) this.persistentTimers.set(id, this.timers.get(id) ?? 0);
+    return { items: new Map(this.persistentItems), timers: new Map(this.persistentTimers) };
+  }
+
+  private applyPersistentCarry(carry: PersistentCarry): void {
+    this.persistentItems = new Map(carry.items);
+    this.persistentTimers = new Map(carry.timers);
+    transferPersistent(this.items, this.timers, carry);
+  }
+
+  /**
+   * Screen offset for a UI-pinned object, or null. [gdp positionUIObjects :444507-444569]
+   */
+  uiOffsetOf(objectIndex: number, viewHalfW: number, viewHalfH: number): { dx: number; dy: number } | null {
+    const a = this.uiAnchors.get(objectIndex);
+    if (!a) return null;
+    return uiOffsetFromCentre(a, viewHalfW, viewHalfH);
+  }
+
+  /**
+   * positionUIObjects does once at load. [gdp :444377-444607, :467060]
+   */
+  private layoutUIObjects(): void {
+    for (const spec of this.index.byObject.values()) {
+      if (spec.id !== 3613) continue;
+      const keys = uiKeysOf(spec.props);
+      if (keys.group <= 0) continue;
+      const guide = keys.target > 0 ? this.mainObject(this.grp(keys.target)) : -1;
+      const guideX = guide >= 0 ? this.level.objects[guide].x : 0;
+      const guideY = guide >= 0 ? this.level.objects[guide].y : 0;
+      for (const i of this.index.groups.get(keys.group) ?? []) {
+        const o = this.level.objects[i];
+        this.uiAnchors.set(i, {
+          objX: o.x,
+          objY: o.y,
+          guideX,
+          guideY,
+          xref: keys.xref,
+          yref: keys.yref,
+          scaleX: keys.scaleX,
+          scaleY: keys.scaleY,
+        });
+      }
+    }
+  }
+
   /** A timer's value in seconds, 0 for one that does not exist. */
   timerValue(id: number): number {
     return this.timers.get(clampItemId(id)) ?? 0;
@@ -4792,6 +5030,7 @@ export class TriggerRuntime {
     this.fork();
     if (value === 0) this.items.delete(item);
     else this.items.set(item, value);
+    if (this.persistentItems.has(item)) this.persistentItems.set(item, value);
     if (this.countListeners.length === 0) return;
     const up = was <= value;
     const on = this.countListeners.filter((l) => l.item === item);
@@ -4816,7 +5055,10 @@ export class TriggerRuntime {
   /** A timer's value, clamped as the game clamps it. [gdp GJEffectManager::updateTimer :486873-486905] */
   private setTimer(id: number, value: number): void {
     this.fork();
-    this.timers.set(clampItemId(id), Math.min(MAX_TIMER_VALUE, Math.max(-MAX_TIMER_VALUE, value)));
+    const tid = clampItemId(id);
+    const v = Math.min(MAX_TIMER_VALUE, Math.max(-MAX_TIMER_VALUE, value));
+    this.timers.set(tid, v);
+    if (this.persistentTimers.has(tid)) this.persistentTimers.set(tid, v);
   }
 
   /**
@@ -5088,6 +5330,7 @@ export class TriggerRuntime {
     if (
       !this.motion &&
       this.toggleGen === 0 &&
+      !this.advFollow?.active &&
       this.commands.length === 0 &&
       this.spawns.length === 0 &&
       this.items.size === 0 &&
@@ -5159,6 +5402,14 @@ export class TriggerRuntime {
         for (const i of this.index.groups.get(g) ?? []) {
           if (dy[i] !== 0) h = Math.imul(h ^ i ^ (dy[i] * 4), 0x01000193);
         }
+      }
+    }
+    if (this.advFollow) h = Math.imul(h ^ this.advFollow.hash(), 0x01000193);
+    if (this.advMotion) {
+      for (let i = 0; i < this.advMotion.length; i += 3) {
+        const dx = this.advMotion[i];
+        const dy = this.advMotion[i + 1];
+        if (dx !== 0 || dy !== 0) h = Math.imul(h ^ (i / 3) ^ (dx * 4) ^ (dy * 4), 0x01000193);
       }
     }
     // The running areas, and where they have pushed things this step.

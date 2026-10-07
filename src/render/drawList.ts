@@ -869,7 +869,11 @@ export class DrawList {
         this.turn(at, meta.spin[i] * 12, os.angle[o]);
       }
       if (frameAlpha <= 0) continue;
-      if (moving && live && live.triggers.objectTransform(o, this.m9)) {
+      const uiDraw = live?.triggers.uiOffsetOf?.(o, (screen.x1 - screen.x0) / 2, (screen.y1 - screen.y0) / 2);
+      if (uiDraw) {
+        scratch[at + 4] = (screen.x0 + screen.x1) / 2 + uiDraw.dx;
+        scratch[at + 5] = (screen.y0 + screen.y1) / 2 + uiDraw.dy;
+      } else if (moving && live && live.triggers.objectTransform(o, this.m9)) {
         this.carry(at, this.m9);
         const hx = Math.abs(scratch[at]) + Math.abs(scratch[at + 2]);
         const hy = Math.abs(scratch[at + 1]) + Math.abs(scratch[at + 3]);
@@ -964,6 +968,11 @@ export class DrawList {
       y = m[1] * ox + m[3] * y + m[5];
       rx *= Math.hypot(m[0], m[2]);
       ry *= Math.hypot(m[1], m[3]);
+    }
+    const ui = live?.triggers.uiOffsetOf?.(o, (screen.x1 - screen.x0) / 2, (screen.y1 - screen.y0) / 2);
+    if (ui) {
+      x = (screen.x0 + screen.x1) / 2 + ui.dx;
+      y = (screen.y0 + screen.y1) / 2 + ui.dy;
     }
     rx = rx * ENTER_GROW_FROM + ENTER_SLIDE;
     ry = ry * ENTER_GROW_FROM + ENTER_SLIDE;

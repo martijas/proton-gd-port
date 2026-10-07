@@ -312,6 +312,12 @@ export function buildTriggerIndex(level: Level, isTrigger: (id: number) => boole
     if (spec.target2 >= groupCount) groupCount = spec.target2 + 1;
     if (spawnedCheckpoint) continue;
     if (MOVEMENT_TRIGGERS.has(spec.id)) movedGroups(spec, movingGroups);
+    // UI Trigger (3613): its target group is drawn every frame at a screen
+    // position, so it joins the dynamic list like a moving group.
+    if (spec.id === 3613) {
+      const g = Math.trunc(Number(spec.props[51] ?? 0)) || 0;
+      if (g > 0) movingGroups.add(g);
+    }
     if (spec.id === 1814 && num(spec, 91) > 0) hasPlayerFollow = true;
     if (spec.touch) touch.push(spec);
     else if (!spec.spawnTriggered) {
