@@ -536,6 +536,52 @@ test("the lens circle's radius, fade, tint and centre", () => {
   nearAll(u.lensOrigin, [1, 0.28125], "no player to be found: key 290 puts it at the right edge");
 });
 
+test("a shock wave stores invert/follow and draws a non-zero time uniform", () => {
+  // [triggerShockWave :660694-660702; preShockWaveShader :657279-657423]
+  const st = createShaderState();
+  fire(st, 2905, { 175: 2, 176: 1, 180: 0.5, 184: 1, 188: 1, 138: 1, 290: -0.5, 291: 0.25 });
+  assert.equal(st.s.shockWaveInvert, true);
+  assert.equal(st.s.shockWaveFollow, true);
+  assert.equal(st.s.shockWaveTarget, -1);
+  stepShaderState(st, 0.25);
+  const u = bandUniforms(
+    st,
+    scene({ targetOnScreen: (t, out) => (t === -1 ? ((out[0] = 0.3), (out[1] = 0.4), true) : false) }),
+  );
+  assert.ok(u.shockWaveTime > 0, "the wave is on");
+  assert.equal(u.shockWaveInvert, true);
+  nearAll(u.shockWaveCenter, [0.3, 0.4 * 0.5625], "follows player 1");
+  assert.ok(u.shockWaveStrength > 0);
+});
+
+test("bulge, split screen and pixelate reach the band uniforms", () => {
+  const st = createShaderState();
+  fire(st, 2916, { 176: 1, 180: 40, 290: 0.5, 188: 1, 138: 1 });
+  assert.equal(st.s.bulgeTarget, -1);
+  let u = bandUniforms(st, scene());
+  assert.ok(u.bulgeValue > 0, "bulge on");
+  nearAll(u.bulgeOrigin, [0.75, (0.5 + 0.5 * 0) * 0.5625], "no player: key 290", 1e-4);
+
+  fire(st, 2924, { 188: 1, 180: 1, 190: 1, 189: 2 });
+  u = bandUniforms(st, scene());
+  near(u.colmod, 2, "cols + 1");
+  near(u.rowmod, 3, "rows + 1");
+
+  fire(st, 2912, { 188: 1, 180: 4, 190: 1, 189: 2 });
+  u = bandUniforms(st, scene());
+  nearAll(u.textureScale, [4, 2], "pixelate scale");
+  nearAll(u.textureScaleInv, [0.25, 0.5], "and its inverse");
+});
+
+test("a fresh shock wave's switches are not rewritten by a companion", () => {
+  const st = createShaderState();
+  fire(st, 2905, { 176: 1, 184: 1, 188: 1 });
+  assert.equal(st.s.shockWaveInvert, true);
+  fire(st, 2905, { 176: 0.5, 513: 1 });
+  assert.equal(st.s.shockWaveInvert, true, "companion keeps invert");
+  assert.equal(st.s.shockWaveFollow, true, "and follow");
+});
+
 // --- the runtime ----------------------------------------------------------------
 
 test("a checkpoint keeps the effects as they were, not as they became", () => {
@@ -557,8 +603,10 @@ test("a checkpoint keeps the effects as they were, not as they became", () => {
 });
 
 test("the shader triggers are done where the game's arithmetic is reproduced", () => {
-  for (const id of [2904, 2910, 2919, 2920, 2921, 2922, 2923]) assert.equal(statusOf(id).status, "done", `${id}`);
-  for (const id of [2905, 2907, 2909, 2911, 2912, 2913, 2914, 2915, 2916, 2917, 2924]) {
+  for (const id of [2904, 2909, 2910, 2911, 2912, 2915, 2919, 2920, 2921, 2922, 2923, 2924]) {
+    assert.equal(statusOf(id).status, "done", `${id}`);
+  }
+  for (const id of [2905, 2907, 2913, 2914, 2916, 2917]) {
     const entry = statusOf(id);
     assert.equal(entry.status, "partial", `${id}`);
     assert.ok(entry.note, `${id} says what is missing`);

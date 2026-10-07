@@ -43,13 +43,12 @@ const AUDIO: TriggerEntry = {
 /** The Ghost Trail: the fading copies of the icon render/ghostTrail.ts draws behind the player, which these start and stop. */
 const TRAIL: TriggerEntry = { status: "done", note: "fading copies of the icon follow the player while it is on" };
 /**
- * The distortion shaders. Their keys, easing and layer range are read as the
- * game reads them and they switch the band on as the game's do, but the game's
- * shader is run with the distortion itself at its off value.
+ * Distortion shaders whose centres do not turn with the camera, matching the
+ * lens circle. Values, easing, follow/invert and the band are the game's.
  */
-const SHADER_UNDRAWN: TriggerEntry = {
+const SHADER_CENTRE: TriggerEntry = {
   status: "partial",
-  note: "the values, their easing and the layer range are the game's, and the band goes through the shader while it is on; the distortion itself is not drawn yet",
+  note: "drawn through the game's shader; the centre does not turn with the camera, and a target the port cannot place falls back to keys 290 and 291",
 };
 const AREA: TriggerEntry = { status: "todo", note: "the area triggers pick their objects at fire time; not built" };
 /** Area Move, Rotate and Scale: worked out every step from each object's distance to the centre. */
@@ -205,26 +204,23 @@ const STATUS: ReadonlyMap<number, TriggerEntry> = new Map<number, TriggerEntry>(
 
   // --- screen effects ---
   [2904, DONE],
-  [2905, SHADER_UNDRAWN],
-  [2907, SHADER_UNDRAWN],
-  [2909, SHADER_UNDRAWN],
+  [2905, SHADER_CENTRE],
+  [2907, SHADER_CENTRE],
+  [2909, DONE],
   [2910, DONE],
-  [2911, SHADER_UNDRAWN],
-  [2912, SHADER_UNDRAWN],
-  [2913, {
-    status: "partial",
-    note: "size, fade, strength, tint and centre are the game's; the centre does not turn with the camera, and a target the port cannot place (key 201, or a group with no single object) falls back to keys 290 and 291 where the game uses a fixed point",
-  }],
-  [2914, SHADER_UNDRAWN],
-  [2915, SHADER_UNDRAWN],
-  [2916, SHADER_UNDRAWN],
-  [2917, SHADER_UNDRAWN],
+  [2911, DONE],
+  [2912, DONE],
+  [2913, SHADER_CENTRE],
+  [2914, SHADER_CENTRE],
+  [2915, DONE],
+  [2916, SHADER_CENTRE],
+  [2917, SHADER_CENTRE],
   [2919, DONE],
   [2920, DONE],
   [2921, DONE],
   [2922, DONE],
   [2923, DONE],
-  [2924, SHADER_UNDRAWN],
+  [2924, DONE],
 ]);
 
 const TODO: TriggerEntry = { status: "todo" };

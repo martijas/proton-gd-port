@@ -219,8 +219,7 @@ export interface ShaderTween {
 
 /**
  * What the triggers store outright rather than ease. Flat, so a checkpoint
- * copies it with a spread. The distortions' own settings (centres, targets,
- * the follow and invert switches) are not kept yet: nothing draws them.
+ * copies it with a spread.
  */
 export interface ShaderSettings {
   /** Key 194 on an Invert Color with key 188: clamp each channel's weight at 1. [+904] */
@@ -253,6 +252,51 @@ export interface ShaderSettings {
   cgOn: boolean;
   cgLast: number;
   cgPhase: number;
+  /**
+   * Distortion switches and targets a fresh trigger writes when it is not a
+   * companion. [triggerShockWave :660694-660702; triggerShockLine
+   *  :660770-660779; triggerGlitch :660822-660830; triggerBulge :661217-661218;
+   *  triggerPinchX/Y :661255-661256; triggerRadialBlur :661093-661095;
+   *  triggerMotionBlurX/Y :661134-661138; triggerPixelateX/Y; triggerChromaticGlitch]
+   */
+  shockWaveInvert: boolean;
+  shockWaveFollow: boolean;
+  shockWaveMoving: boolean;
+  shockWaveRelative: boolean;
+  shockWaveTarget: number;
+  shockLineAxis: boolean;
+  shockLineDirection: boolean;
+  shockLineDual: boolean;
+  shockLineInvert: boolean;
+  shockLineFollow: boolean;
+  shockLineMoving: boolean;
+  shockLineRelative: boolean;
+  shockLineTarget: number;
+  /** Glitch grid/speed knobs, not eased. [triggerGlitch :660822-660830] */
+  glitchSpeed: number;
+  glitchSlice: number;
+  glitchMaxOffset: number;
+  glitchMaxColX: number;
+  glitchMaxColY: number;
+  glitchRelative: boolean;
+  cgRelative: boolean;
+  cgFollow: boolean;
+  pixelateRelative: boolean;
+  pixelateSnap: boolean;
+  pixelateHardEdges: boolean;
+  radialFollow: boolean;
+  radialTarget: number;
+  motionDual: boolean;
+  motionRelative: boolean;
+  motionTargetX: number;
+  motionTargetY: number;
+  bulgeRelative: boolean;
+  bulgeTarget: number;
+  pinchFollowX: boolean;
+  pinchFollowY: boolean;
+  pinchRelative: boolean;
+  pinchTargetX: number;
+  pinchTargetY: number;
 }
 
 export interface ShaderState {
@@ -287,6 +331,43 @@ function defaultSettings(): ShaderSettings {
     cgOn: false,
     cgLast: 0,
     cgPhase: 0,
+    shockWaveInvert: false,
+    shockWaveFollow: false,
+    shockWaveMoving: false,
+    shockWaveRelative: false,
+    shockWaveTarget: 0,
+    shockLineAxis: false,
+    shockLineDirection: false,
+    shockLineDual: false,
+    shockLineInvert: false,
+    shockLineFollow: false,
+    shockLineMoving: false,
+    shockLineRelative: false,
+    shockLineTarget: 0,
+    glitchSpeed: 0.001,
+    glitchSlice: 0,
+    glitchMaxOffset: 0,
+    glitchMaxColX: 0,
+    glitchMaxColY: 0,
+    glitchRelative: false,
+    cgRelative: false,
+    cgFollow: false,
+    pixelateRelative: false,
+    pixelateSnap: false,
+    pixelateHardEdges: false,
+    radialFollow: false,
+    radialTarget: 0,
+    motionDual: false,
+    motionRelative: false,
+    motionTargetX: 0,
+    motionTargetY: 0,
+    bulgeRelative: false,
+    bulgeTarget: 0,
+    pinchFollowX: false,
+    pinchFollowY: false,
+    pinchRelative: false,
+    pinchTargetX: 0,
+    pinchTargetY: 0,
   };
 }
 
@@ -489,6 +570,11 @@ export function applyShaderTrigger(st: ShaderState, spec: TriggerSpec): void {
       } else {
         s.shockWavePhase = 0;
         dur = 0;
+        s.shockWaveInvert = on(spec, 184);
+        s.shockWaveFollow = on(spec, 188);
+        s.shockWaveMoving = on(spec, 190);
+        s.shockWaveRelative = on(spec, 514);
+        s.shockWaveTarget = shaderTargetOf(spec);
       }
       s.shockWaveStart = st.time;
       const keys: readonly [number, number][] = [
@@ -507,6 +593,14 @@ export function applyShaderTrigger(st: ShaderState, spec: TriggerSpec): void {
       } else {
         s.shockLinePhase = 0;
         dur = 0;
+        s.shockLineAxis = on(spec, 186);
+        s.shockLineDirection = on(spec, 185);
+        s.shockLineDual = on(spec, 187);
+        s.shockLineInvert = on(spec, 184);
+        s.shockLineFollow = on(spec, 188);
+        s.shockLineMoving = on(spec, 190);
+        s.shockLineRelative = on(spec, 514);
+        s.shockLineTarget = shaderTargetOf(spec);
       }
       s.shockLineStart = st.time;
       const keys: readonly [number, number][] = [
@@ -518,8 +612,14 @@ export function applyShaderTrigger(st: ShaderState, spec: TriggerSpec): void {
       return;
     }
     case 2909:
-      // No easing on this one. [triggerGlitch :660809-660846]
+      // Strength eases; the grid knobs are set at once. [triggerGlitch :660809-660846]
       tweenAuto(st, TWEEN.GLITCH, f(176), d, 0, 0);
+      s.glitchSpeed = f(175) <= 0.001 ? 0.001 : f(175);
+      s.glitchSlice = f(180);
+      s.glitchMaxOffset = f(179);
+      s.glitchMaxColX = f(183);
+      s.glitchMaxColY = f(191);
+      s.glitchRelative = on(spec, 514);
       return;
     case 2910:
       // [:422360-422377; triggerChromaticX/Y :660848-660892]
@@ -549,6 +649,8 @@ export function applyShaderTrigger(st: ShaderState, spec: TriggerSpec): void {
       tw(TWEEN.CG_LINE_THICK, f(179));
       tw(TWEEN.CG_LINE_STRENGTH, f(191));
       tw(TWEEN.CG_RGB, f(180));
+      s.cgRelative = on(spec, 514);
+      s.cgFollow = on(spec, 194);
       return;
     }
     case 2912:
@@ -556,10 +658,16 @@ export function applyShaderTrigger(st: ShaderState, spec: TriggerSpec): void {
       if (on(spec, 188)) {
         st.v[TWEEN.PIXELATE_X] = Math.max(1, st.v[TWEEN.PIXELATE_X]);
         tw(TWEEN.PIXELATE_X, f(180));
+        s.pixelateSnap = on(spec, 194);
+        s.pixelateRelative = on(spec, 514);
+        s.pixelateHardEdges = on(spec, 515);
       }
       if (on(spec, 190)) {
         st.v[TWEEN.PIXELATE_Y] = Math.max(1, st.v[TWEEN.PIXELATE_Y]);
         tw(TWEEN.PIXELATE_Y, f(189));
+        s.pixelateSnap = on(spec, 194);
+        s.pixelateRelative = on(spec, 514);
+        s.pixelateHardEdges = on(spec, 515);
       }
       return;
     case 2913:
@@ -582,6 +690,8 @@ export function applyShaderTrigger(st: ShaderState, spec: TriggerSpec): void {
       tw(TWEEN.RADIAL_X, f(290));
       tw(TWEEN.RADIAL_Y, f(291));
       s.blurOnlyEmpty = on(spec, 515);
+      s.radialFollow = on(spec, 188);
+      s.radialTarget = shaderTargetOf(spec);
       return;
     case 2915:
       // The fade and intensity take the duration but no easing.
@@ -596,6 +706,10 @@ export function applyShaderTrigger(st: ShaderState, spec: TriggerSpec): void {
         tweenAuto(st, TWEEN.BLUR_INTENSITY, f(176), d, 0, 0);
         tw(id, f(key));
         s.blurOnlyEmpty = on(spec, 515);
+        s.motionDual = on(spec, 194);
+        s.motionRelative = on(spec, 514);
+        if (axis === 188) s.motionTargetX = shaderTargetOf(spec);
+        else s.motionTargetY = shaderTargetOf(spec);
       }
       return;
     case 2916:
@@ -604,6 +718,8 @@ export function applyShaderTrigger(st: ShaderState, spec: TriggerSpec): void {
       tw(TWEEN.BULGE_X, f(290));
       tw(TWEEN.BULGE_Y, f(291));
       tw(TWEEN.BULGE_RADIUS, f(180));
+      s.bulgeRelative = on(spec, 514);
+      s.bulgeTarget = on(spec, 188) ? shaderTargetOf(spec) : 0;
       return;
     case 2917:
       // X on key 190 and Y on key 194. [:422496-422521; triggerPinchX/Y :661236-661312]
@@ -612,12 +728,18 @@ export function applyShaderTrigger(st: ShaderState, spec: TriggerSpec): void {
         tw(TWEEN.PINCH_CX, f(290));
         tw(TWEEN.PINCH_RADIUS, f(512));
         tw(TWEEN.PINCH_MOD_X, f(179));
+        s.pinchFollowX = on(spec, 188);
+        s.pinchTargetX = shaderTargetOf(spec);
+        s.pinchRelative = on(spec, 514);
       }
       if (on(spec, 194)) {
         tw(TWEEN.PINCH_Y, f(189));
         tw(TWEEN.PINCH_CY, f(291));
         tw(TWEEN.PINCH_RADIUS, f(512));
         tw(TWEEN.PINCH_MOD_Y, f(179));
+        s.pinchFollowY = on(spec, 188);
+        s.pinchTargetY = shaderTargetOf(spec);
+        s.pinchRelative = on(spec, 514);
       }
       return;
     case 2919:

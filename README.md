@@ -149,8 +149,8 @@ Goals 1 (physics), 2 (assets) and 4 (triggers) are done. Goal 3 (the renderer)
 draws the level, its colours, its moving parts, the player, the particles, the
 frame animations, the skeletal beasts, the text objects, the ground line, the
 middleground, the player's trail, the gradient layers and the screen effects.
-What it still owes — most of the distortion effects, two of the gradient's
-four blends, the circle waves and the middleground's true height — is under
+What it still owes — distortion centres that follow a target under Camera
+Rotate, the circle waves and the middleground's true height — is under
 "Known wrong" below.
 
 Goal 5 is done. **The game is playable from its own page**: the entry page
@@ -354,8 +354,9 @@ remaining gaps are counted by `npm run triggers`.
   the level's layers — the front decoration and the ground cover it — its
   landing puff and exhaust go over it, Custom Particles draw in their own
   layer, and the Screen effects switch in settings works. The distortions
-  (shock waves, glitch, the blurs, bulge, pinch, pixelate, split screen) are
-  timed and turn the band on but are not drawn yet.
+  (shock waves, glitch, the blurs, bulge, pinch, pixelate, split screen) run
+  through the game's shader; centres that follow a target do not yet turn
+  with the camera.
 - **The camera is the game's, and the corridor stands on the screen.** Zoom
   (1913), Static Camera (1914), Offset (1916), Camera Rotate (2015) and Camera
   Edge (2062) ease as the game's do, and the follow between them is
@@ -680,13 +681,10 @@ as well as stopping the emitting.
 
 ### Known wrong, and why it is not fixed yet
 
-**Most of the distortion effects are not drawn.** Shock Wave (2905), Shock
-Line (2907), Glitch (2909), Chromatic Glitch (2911), Radial Blur (2914) and
-Bulge (2916) — 25 placements across Dash and the tower floors — and the four
-the official levels never place are timed, eased and layered as the game's,
-and turn their band on, but the shader runs with the distortion at its off
-value. Lens Circle (2913) is drawn, though its centre does not turn with the
-view. `npm run triggers` counts all eleven as partial.
+**Distortion centres do not turn with the camera.** Shock Wave, Shock Line,
+Lens Circle, Radial Blur, Bulge and Pinch place their centres in screen space
+as the game does for a fixed offset, but a follow target does not rotate with
+Camera Rotate the way the game's does.
 
 **Two of the gradient's blends are not drawn.** Blends 2 and 3 (key 174)
 multiply by and invert what is under the layer, which needs a blend state the
