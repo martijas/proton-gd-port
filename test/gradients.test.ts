@@ -8,7 +8,7 @@ import { NO_INPUT } from "../src/physics/types";
 import type { ColorSource, ResolvedChannel } from "../src/render/colors";
 import { GRADIENT_SLOT, GradientPainter, gradientSlot, placeGradient, type GradientWorld } from "../src/render/gradients";
 import type { GradientState, TriggerRuntime } from "../src/triggers/runtime";
-import { INSTANCE_BYTES, INSTANCE_FLOATS } from "../src/engine/gl/spriteBatch";
+import { BLEND, INSTANCE_BYTES, INSTANCE_FLOATS, blendNeedsGl } from "../src/engine/gl/spriteBatch";
 import { makeSim } from "./helpers";
 import { emptyLevel } from "./levelKit";
 
@@ -91,18 +91,39 @@ test("turned −90 the colour runs from the start at the bottom to the end at th
   const q = placeGradient(state, world)!;
   const near = (a: number[], b: number[]) => a.forEach((v, i) => assert.ok(Math.abs(v - b[i]) < 1e-6, `${a} vs ${b}`));
   near(q.weights, [1, 1, 0, 0]);
-  assert.deepEqual([q.start, q.startAlpha, q.end, q.endAlpha, q.additive], [{ r: 216, g: 0, b: 255, a: 1, blending: false }, 1, { r: 78, g: 0, b: 255, a: 0, blending: false }, 0, true]);
+  assert.deepEqual([q.start, q.startAlpha, q.end, q.endAlpha, q.blend], [{ r: 216, g: 0, b: 255, a: 1, blending: false }, 1, { r: 78, g: 0, b: 255, a: 0, blending: false }, 0, BLEND.ADD]);
 });
 
-test("a gradient shows nothing when both ends are clear, an additive one when both are black, and two blends are not drawn", () => {
+test("a gradient shows nothing when both ends are clear, an additive one when both are black", () => {
   // [:423680-423692; the blend modes, triggerGradientCommand :436358-436376]
   const clear = dashWorld(channel(216, 0, 255, 0), channel(78, 0, 255, 0));
   assert.equal(placeGradient(clear.state, clear.world), null);
   const black = dashWorld(channel(0, 0, 0), channel(0, 0, 0, 0));
   assert.equal(placeGradient(black.state, black.world), null);
   assert.ok(placeGradient({ ...black.state, blend: 0 }, black.world), "a normal black one covers");
+  assert.ok(placeGradient({ ...black.state, blend: 2 }, black.world), "a multiply black one still multiplies");
+  assert.ok(placeGradient({ ...black.state, blend: 3 }, black.world), "an invert black one still inverts");
+});
+
+test("blends 2 and 3 multiply and invert, with their own GL blend on the strips", () => {
+  // [gdp triggerGradientCommand :436371-436389 (774/771 and 775/769)]
   const { world, state } = dashWorld();
-  assert.equal(placeGradient({ ...state, blend: 2 }, world), null);
+  const multiply = placeGradient({ ...state, blend: 2 }, world)!;
+  const invert = placeGradient({ ...state, blend: 3 }, world)!;
+  assert.equal(multiply.blend, BLEND.MULTIPLY);
+  assert.equal(invert.blend, BLEND.INVERT);
+  assert.equal(blendNeedsGl(BLEND.MULTIPLY), true);
+  assert.equal(blendNeedsGl(BLEND.INVERT), true);
+  assert.equal(blendNeedsGl(BLEND.ADD), false);
+  const painter = new GradientPainter();
+  const white = { u0: 0, v0: 0, du: 1, dv: 1, unit: 13, w: 1, h: 1 };
+  painter.update([{ ...state, blend: 2 }], world, white);
+  const slot = GRADIENT_SLOT.BEHIND + 2;
+  assert.equal(painter.layerCount[slot], 48);
+  const bytes = new Uint8Array(painter.buffer.buffer);
+  assert.equal(bytes[painter.layerStart[slot] * INSTANCE_BYTES + 46], BLEND.MULTIPLY);
+  painter.update([{ ...state, blend: 3 }], world, white);
+  assert.equal(new Uint8Array(painter.buffer.buffer)[painter.layerStart[slot] * INSTANCE_BYTES + 46], BLEND.INVERT);
 });
 
 test("a gradient off the view shows nothing", () => {
@@ -133,7 +154,7 @@ test("the quad is drawn as strips across the way the colour runs, each its own c
   const last = (painter.layerStart[slot] + 47) * INSTANCE_FLOATS;
   // The bottom strip: nearly the start, nearly opaque, additive.
   assert.ok(Math.abs(data[first + 5] - (-5 + 180 / 96)) < 1e-9, "the first strip's middle");
-  assert.ok(bytes[43] > 245 && bytes[40] > 210 && bytes[46] === 1);
+  assert.ok(bytes[43] > 245 && bytes[40] > 210 && bytes[46] === BLEND.ADD);
   // The top strip: nearly the end and nearly clear.
   assert.ok(bytes[(painter.layerStart[slot] + 47) * INSTANCE_BYTES + 43] < 8);
   assert.ok(Math.abs(data[last + 3] - 180 / 96) < 1e-9, "each strip is 180 / 48 tall");

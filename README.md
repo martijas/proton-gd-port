@@ -686,11 +686,9 @@ Lens Circle, Radial Blur, Bulge and Pinch place their centres in screen space
 as the game does for a fixed offset, but a follow target does not rotate with
 Camera Rotate the way the game's does.
 
-**Two of the gradient's blends are not drawn.** Blends 2 and 3 (key 174)
-multiply by and invert what is under the layer, which needs a blend state the
-sprite batch does not have, so such a layer draws nothing. A layer on a
-screen-space draw layer (BG, MG, G, UI, Max) also turns with the view, where
-the game's stays upright.
+**A gradient on a screen-space draw layer turns with the view.** A layer on
+BG, MG, G, UI or Max turns with the camera, where the game's stays upright.
+Blends 0-3 (key 174) all draw.
 
 **Frame animations the table does not cover.** The per-id frame choices of
 1697-1699 and the extra drops of 1855 and 1858 play the plain cycle, the

@@ -61,6 +61,12 @@ const BLEND_BYTE = 46;
  * with its colour as it is — a CCMotionStreak made normal — is weighed by
  * the art's alpha and its own as an additive particle is, and covers by
  * the same: COVER_STRAIGHT.
+ *
+ * Two more need their own GL blend: a Gradient's multiply (key 174 = 2) is
+ * DST_COLOR / ONE_MINUS_SRC_ALPHA, and its invert (key 174 = 3) is
+ * ONE_MINUS_DST_COLOR / ONE_MINUS_SRC_COLOR, both with the colour already
+ * times its opacity (CCLayerGradient byte 457). draw switches the GL blend
+ * for those runs and puts it back.
  * [cocos2d::CCSprite::updateColor (2.2074 libcocos2d.dll VA 0x18008d450;
  *  gd-ida-decomp.cpp:863976-864005: rgb × opacity when +468);
  *  CCImage::_initWithPngData premultiplies (VA 0x18007b5c0ff, :855371ff);
@@ -87,6 +93,10 @@ export const BLEND = {
   STRAIGHT: 4,
   /** Covers as GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA on its colour as given: weighed as ADD_PARTICLE is. */
   COVER_STRAIGHT: 5,
+  /** Multiplies by what is under it: GL_DST_COLOR / GL_ONE_MINUS_SRC_ALPHA. */
+  MULTIPLY: 6,
+  /** Inverts what is under it: GL_ONE_MINUS_DST_COLOR / GL_ONE_MINUS_SRC_COLOR. */
+  INVERT: 7,
 } as const;
 
 /** Where in an instance its shape byte, aFlags.w, sits. */
@@ -116,7 +126,18 @@ export const FLAG_GREY = 2;
 
 /** Whether a blend byte (BLEND) adds to what is under it rather than covering it. */
 export function blendAdds(blend: number): boolean {
-  return blend !== BLEND.NORMAL && blend !== BLEND.STRAIGHT && blend !== BLEND.COVER_STRAIGHT;
+  return (
+    blend !== BLEND.NORMAL &&
+    blend !== BLEND.STRAIGHT &&
+    blend !== BLEND.COVER_STRAIGHT &&
+    blend !== BLEND.MULTIPLY &&
+    blend !== BLEND.INVERT
+  );
+}
+
+/** Whether a blend byte needs a GL blend other than ONE / ONE_MINUS_SRC_ALPHA. */
+export function blendNeedsGl(blend: number): boolean {
+  return blend === BLEND.MULTIPLY || blend === BLEND.INVERT;
 }
 /**
  * Texture units the shader can reach. Units 0-7 hold the eight gameplay
@@ -253,7 +274,9 @@ vec4 sampleSheet(int i, vec2 uv) {
 }
 
 void main() {
-  bool covers = vBlend == ${BLEND.NORMAL}u || vBlend == ${BLEND.STRAIGHT}u || vBlend == ${BLEND.COVER_STRAIGHT}u;
+  bool covers = vBlend == ${BLEND.NORMAL}u || vBlend == ${BLEND.STRAIGHT}u
+    || vBlend == ${BLEND.COVER_STRAIGHT}u || vBlend == ${BLEND.MULTIPLY}u
+    || vBlend == ${BLEND.INVERT}u;
   // The alpha pass has nothing to add for a sprite that covers, so it does
   // not sample the sheet for one.
   if (uAddAlpha > 0.5 && covers) discard;
@@ -405,10 +428,29 @@ export class SpriteBatch {
 
   /**
    * Draws `count` instances from `data`, which must be laid out as above,
-   * starting at instance `start`.
+   * starting at instance `start`. Multiply and invert runs change the GL
+   * blend and put it back; mixed runs are split so each keeps its own.
    */
   draw(data: Float32Array, count: number, start = 0): void {
     if (count <= 0) return;
+    const bytes = this.bytesOf(data);
+    let at = data.byteOffset + start * INSTANCE_BYTES + BLEND_BYTE;
+    let i = 0;
+    while (i < count) {
+      const blend = bytes[at + i * INSTANCE_BYTES];
+      let j = i + 1;
+      if (blendNeedsGl(blend)) {
+        while (j < count && bytes[at + j * INSTANCE_BYTES] === blend) j++;
+      } else {
+        while (j < count && !blendNeedsGl(bytes[at + j * INSTANCE_BYTES])) j++;
+      }
+      this.drawRun(data, j - i, start + i, blend);
+      i = j;
+    }
+  }
+
+  /** One contiguous run under one GL blend. */
+  private drawRun(data: Float32Array, count: number, start: number, blend: number): void {
     const gl = this.gl;
     if (count > this.capacity) this.grow(count);
     gl.bindVertexArray(this.vao);
@@ -416,6 +458,7 @@ export class SpriteBatch {
     // Orphan the old storage so the driver never waits on the previous frame.
     gl.bufferData(gl.ARRAY_BUFFER, this.capacity * INSTANCE_BYTES, gl.DYNAMIC_DRAW);
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, data, start * INSTANCE_FLOATS, count * INSTANCE_FLOATS);
+    this.applyBlend(blend);
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
     // Only additive sprites add to the band's alpha, so a run without one
     // has no second pass.
@@ -428,22 +471,41 @@ export class SpriteBatch {
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
       gl.colorMask(true, true, true, true);
       this.drawCalls++;
+    } else if (blendNeedsGl(blend)) {
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     }
     gl.bindVertexArray(null);
     this.drawCalls++;
     this.instances += count;
   }
 
+  /**
+   * The GL blend for a run. Multiply and invert are the Gradient trigger's
+   * key-174 modes 2 and 3; everything else stays on the batch's usual
+   * ONE / ONE_MINUS_SRC_ALPHA. [triggerGradientCommand :436371-436389]
+   */
+  private applyBlend(blend: number): void {
+    const gl = this.gl;
+    if (blend === BLEND.MULTIPLY) gl.blendFunc(gl.DST_COLOR, gl.ONE_MINUS_SRC_ALPHA);
+    else if (blend === BLEND.INVERT) gl.blendFunc(gl.ONE_MINUS_DST_COLOR, gl.ONE_MINUS_SRC_COLOR);
+    else gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  }
+
   /** Byte views of the arrays handed to `draw`, made once per array rather than per draw. */
   private readonly byteViews = new WeakMap<ArrayBufferLike, Uint8Array>();
 
-  /** Whether any of the run's instances adds (aFlags.z, BLEND) rather than covers. */
-  private hasAdditive(data: Float32Array, start: number, count: number): boolean {
+  private bytesOf(data: Float32Array): Uint8Array {
     let bytes = this.byteViews.get(data.buffer);
     if (!bytes) {
       bytes = new Uint8Array(data.buffer);
       this.byteViews.set(data.buffer, bytes);
     }
+    return bytes;
+  }
+
+  /** Whether any of the run's instances adds (aFlags.z, BLEND) rather than covers. */
+  private hasAdditive(data: Float32Array, start: number, count: number): boolean {
+    const bytes = this.bytesOf(data);
     let at = data.byteOffset + start * INSTANCE_BYTES + BLEND_BYTE;
     for (let i = 0; i < count; i++, at += INSTANCE_BYTES) if (blendAdds(bytes[at])) return true;
     return false;

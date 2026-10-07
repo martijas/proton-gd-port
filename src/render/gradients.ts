@@ -8,7 +8,9 @@
 // objects are the corners instead. The colour runs along the trigger's own
 // turn, from the start channel (key 21) to the end channel (key 22), each at
 // its channel's opacity and the trigger's group opacity, and the layer sits
-// over everything else in its draw layer.
+// over everything else in its draw layer. Key 174 picks the blend: normal,
+// additive, multiply or invert (0-3), the last two with their own GL blend
+// on the sprite batch.
 //
 // A quad with a colour at each corner is not something the sprite batch can
 // draw, so the quad is cut into strips across the way the colour runs, each
@@ -25,6 +27,14 @@ import type { Level } from "../level/types";
 import type { GradientState, TriggerRuntime } from "../triggers/runtime";
 import { applyHsv, type ColorSource, type Rgb } from "./colors";
 import type { EffectQuad } from "./effects";
+
+/** Key 174 as the instance blend byte the strips carry. */
+function gradientBlend(mode: number): number {
+  if (mode === 1) return BLEND.ADD;
+  if (mode === 2) return BLEND.MULTIPLY;
+  if (mode === 3) return BLEND.INVERT;
+  return BLEND.NORMAL;
+}
 
 /** How far past the view a side with no group stands. [:423558-423565] */
 const VIEW_MARGIN = 20;
@@ -74,7 +84,8 @@ export interface GradientQuad {
   endAlpha: number;
   /** How far towards the start each corner is, 0 to 1: CCLayerGradient's weights, in corner order. */
   weights: [number, number, number, number];
-  additive: boolean;
+  /** Key 174 as a BLEND byte: NORMAL, ADD, MULTIPLY or INVERT. */
+  blend: number;
 }
 
 /** What placing a gradient reads from the live level. */
@@ -89,13 +100,13 @@ export interface GradientWorld {
 /**
  * One gradient as the game places and colours it this frame. Null when it
  * shows nothing: both ends clear, an additive one that is black at both
- * ends, one wholly off the view, and the two blend modes the sprite batch
- * cannot do (2 and 3, which multiply by and invert what is under them).
+ * ends, or one wholly off the view. Blends 2 and 3 (multiply and invert)
+ * draw with their own GL blend on the sprite batch.
  * [gdp updateGradientLayers :423640-423700 (the colours and when it hides),
- *  :423700-423760 (the sides), :423800-423830 (the corners)]
+ *  :423700-423760 (the sides), :423800-423830 (the corners);
+ *  triggerGradientCommand :436371-436389]
  */
 export function placeGradient(g: GradientState, world: GradientWorld): GradientQuad | null {
-  if (g.blend === 2 || g.blend === 3) return null;
   const { level, triggers, colors, view } = world;
   const trigger = level.objects[g.object];
   if (!trigger) return null;
@@ -107,10 +118,10 @@ export function placeGradient(g: GradientState, world: GradientWorld): GradientQ
   const end = applyHsv(endChannel, trigger.detailHsv);
   const startAlpha = Math.trunc(startChannel.a * 255 * groupAlpha) / 255;
   const endAlpha = Math.trunc(endChannel.a * 255 * groupAlpha) / 255;
-  const additive = g.blend === 1;
+  const blend = gradientBlend(g.blend);
   if (startAlpha === 0 && endAlpha === 0) return null;
   const black = (c: Rgb): boolean => c.r === 0 && c.g === 0 && c.b === 0;
-  if (additive && black(start) && black(end)) return null;
+  if (blend === BLEND.ADD && black(start) && black(end)) return null;
 
   const at = (group: number): [number, number] | null => {
     const i = triggers.mainObjectOf(group);
@@ -159,7 +170,7 @@ export function placeGradient(g: GradientState, world: GradientWorld): GradientQ
     end,
     endAlpha,
     weights: [w(1, 1), w(-1, 1), w(1, -1), w(-1, -1)],
-    additive,
+    blend,
   };
 }
 
@@ -259,7 +270,7 @@ export class GradientPainter {
         bytes[o + 43] = Math.round(Math.min(1, Math.max(0, mix(q.endAlpha, q.startAlpha))) * 255);
         bytes[o + 44] = white.unit;
         bytes[o + 45] = 0;
-        bytes[o + 46] = q.additive ? BLEND.ADD : BLEND.NORMAL;
+        bytes[o + 46] = q.blend;
         bytes[o + 47] = 0;
         at++;
       }
