@@ -25,6 +25,7 @@
 import { BLEND, INSTANCE_BYTES, INSTANCE_FLOATS } from "../engine/gl/spriteBatch";
 import type { Level } from "../level/types";
 import type { GradientState, TriggerRuntime } from "../triggers/runtime";
+import { effectiveZOrder, maxZOrder, OBJECT_Z } from "../triggers/shaderState";
 import { applyHsv, type ColorSource, type Rgb } from "./colors";
 import type { EffectQuad } from "./effects";
 
@@ -54,20 +55,51 @@ const SQRT2 = Math.fround(1.4142);
 export const GRADIENT_SLOT = {
   BACKGROUND: 0,
   MIDDLEGROUND: 1,
-  /** B5 … B1 are 2 … 6. */
+  /** B5 … B1 are 2 … 6. B1 gradients at z ≥ PARTICLES_UNDER use B1_OVER_PARTICLES. */
   BEHIND: 2,
   PLAYER: 7,
   /** T1 … T4 are 8 … 11. */
   FRONT: 8,
   GROUND: 12,
+  /**
+   * B1 gradients whose object-layer z is at or over the player's under
+   * particles (z order ≥ 1 → node z ≥ 39). Drawn after PARTICLES_UNDER.
+   * [gdp triggerGradientCommand :436467-436474; OBJECT_Z.PARTICLES_UNDER]
+   */
+  B1_OVER_PARTICLES: 13,
 } as const;
-export const GRADIENT_SLOTS = 13;
+export const GRADIENT_SLOTS = 14;
 
-/** The slot a gradient's key-202 layer draws in. */
-export function gradientSlot(layer: number): number {
+/**
+ * Where a gradient sits among the object layer's children: maxZOrder for the
+ * layer (with the screen-space overrides) plus its z order held to ±5.
+ * [gdp triggerGradientCommand :436394-436474]
+ */
+export function gradientNodeZ(layer: number, zOrder: number): number {
+  let base: number;
+  if (layer === 1) base = -54;
+  else if (layer === 2) base = -14;
+  else if (layer === 13) base = 46;
+  else if (layer === 14) base = 56;
+  else base = maxZOrder(layer);
+  const order = zOrder < -5 ? -5 : zOrder > 5 ? 5 : zOrder;
+  return base + order;
+}
+
+/**
+ * The slot a gradient's key-202 layer draws in. `zOrder` is the trigger's
+ * key 25 (effectiveZOrder); on B1 it decides whether the layer goes with the
+ * streak (under the player's particles) or after them.
+ */
+export function gradientSlot(layer: number, zOrder = 0): number {
   if (layer <= 1) return GRADIENT_SLOT.BACKGROUND;
   if (layer === 2) return GRADIENT_SLOT.MIDDLEGROUND;
-  if (layer <= 7) return GRADIENT_SLOT.BEHIND + (layer - 3);
+  if (layer <= 7) {
+    if (layer === 7 && gradientNodeZ(layer, zOrder) >= OBJECT_Z.PARTICLES_UNDER) {
+      return GRADIENT_SLOT.B1_OVER_PARTICLES;
+    }
+    return GRADIENT_SLOT.BEHIND + (layer - 3);
+  }
   if (layer === 8) return GRADIENT_SLOT.PLAYER;
   if (layer <= 12) return GRADIENT_SLOT.FRONT + (layer - 9);
   return GRADIENT_SLOT.GROUND;
@@ -95,6 +127,35 @@ export interface GradientWorld {
   colors: ColorSource;
   /** The view in the level's units, unturned. */
   view: { x0: number; y0: number; x1: number; y1: number };
+  /**
+   * Camera turn (degrees) and the centre the batch turns about. Screen-space
+   * layers (BG, MG, G, UI, Max) are inverse-rotated so they stay upright on
+   * screen after the batch applies the view's turn. Object layers leave this
+   * unused. [gdp triggerGradientCommand :436475-436477]
+   */
+  turn?: number;
+  centre?: { x: number; y: number };
+}
+
+/**
+ * Key 202 layers that stay upright under Camera Rotate: 1 BG, 2 MG, 13 G,
+ * 14 UI, 15 Max. Object layers (B5–T4) turn with the view.
+ * [gdp triggerGradientCommand :436475-436477: ((1<<(layer-1)) & 0x7003)]
+ */
+export function isScreenSpaceLayer(layer: number): boolean {
+  const bit = layer - 1;
+  return bit >= 0 && bit <= 14 && ((1 << bit) & 0x7003) !== 0;
+}
+
+/** Undo `turnPoint` about `cx,cy` so a later batch turn leaves the point where it was. */
+function unturnPoint(x: number, y: number, cx: number, cy: number, degrees: number): [number, number] {
+  if (degrees === 0) return [x, y];
+  const r = (-degrees * Math.PI) / 180;
+  const c = Math.cos(r);
+  const s = Math.sin(r);
+  const dx = x - cx;
+  const dy = y - cy;
+  return [cx + dx * c + dy * s, cy - dx * s + dy * c];
 }
 
 /**
@@ -151,6 +212,18 @@ export function placeGradient(g: GradientState, world: GradientWorld): GradientQ
     corners = [bl[0], bl[1], br[0], br[1], tl[0], tl[1], tr[0], tr[1]];
   }
 
+  // Inverse-rotate screen-space corners about the batch's turn centre so the
+  // view's turn leaves them axis-aligned on screen.
+  const camTurn = world.turn ?? 0;
+  if (isScreenSpaceLayer(g.layer) && camTurn !== 0 && world.centre) {
+    const { x: cx, y: cy } = world.centre;
+    const [x0c, y0c] = unturnPoint(corners[0], corners[1], cx, cy, camTurn);
+    const [x1c, y1c] = unturnPoint(corners[2], corners[3], cx, cy, camTurn);
+    const [x2c, y2c] = unturnPoint(corners[4], corners[5], cx, cy, camTurn);
+    const [x3c, y3c] = unturnPoint(corners[6], corners[7], cx, cy, camTurn);
+    corners = [x0c, y0c, x1c, y1c, x2c, y2c, x3c, y3c];
+  }
+
   // The way the colour runs: the trigger's turn, clockwise, as a vector
   // (cos −r, sin −r), stretched so its larger part reaches the corners.
   // [:423700-423704 (+468); CCLayerGradient::updateColor, compressed]
@@ -202,7 +275,7 @@ export class GradientPainter {
     for (let slot = 0; slot < GRADIENT_SLOTS; slot++) {
       const from = at;
       for (const g of states) {
-        if (gradientSlot(g.layer) !== slot) continue;
+        if (gradientSlot(g.layer, g.zOrder) !== slot) continue;
         const quad = placeGradient(g, world);
         if (quad) at = this.write(at, quad, white);
       }

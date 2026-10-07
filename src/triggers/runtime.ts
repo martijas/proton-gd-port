@@ -46,6 +46,7 @@ import {
   carriedShaderState,
   cloneShaderState,
   createShaderState,
+  effectiveZOrder,
   SHADER_TRIGGER_IDS,
   stepShaderState,
   type ShaderState,
@@ -338,12 +339,16 @@ export interface VisualState {
   shakeInterval: number;
   shakeRemaining: number;
   /**
-   * The Ghost Trail, which the Enable and Disable Ghost Trail triggers (32
-   * and 33) start and stop: copies of the icon fading behind the player
-   * (render/ghostTrail.ts), not a streak. [gdp trigger dispatch
+   * The Ghost Trail on player 1, which the Enable and Disable Ghost Trail
+   * triggers (32 and 33) start and stop: copies of the icon fading behind
+   * the player (render/ghostTrail.ts), not a streak. Player 2's is
+   * `ghostTrail2`, set only while a dual is on — a trail turned on before
+   * the dual starts gives player 2 none. [gdp trigger dispatch
    *  :315129-315140 → PlayLayer::toggleGhostEffect :92269-92276]
    */
   ghostTrail: boolean;
+  /** Player 2's Ghost Trail; only written while a dual is on. */
+  ghostTrail2: boolean;
   /** Whether the player is drawn at all. */
   hidePlayer: boolean;
   /**
@@ -390,6 +395,12 @@ export interface VisualState {
    * in place. [GJBaseGameLayer::updateActiveEnterEffect :467525-467625]
    */
   enter: EnterTables;
+  /**
+   * Custom enter instances (3017-3021) per enter channel, coming in and going
+   * out. Replaced like `enter`. [gdp addCustomEnterEffect :467370-467508]
+   */
+  customEnterIn: ReadonlyMap<number, readonly CustomEnterEffect[]>;
+  customEnterOut: ReadonlyMap<number, readonly CustomEnterEffect[]>;
 }
 
 /** The two enter-effect tables, by enter channel 0-100. */
@@ -494,6 +505,12 @@ export interface GradientState {
   object: number;
   /** Key 202: the draw layer, numbered as the shader range is (1 BG to 15 Max), at least 1. */
   layer: number;
+  /**
+   * Key 25 as getObjectZOrder reads it: with the layer's max z, held to ±5,
+   * it is where the gradient sits among the object layer's children.
+   * [gdp triggerGradientCommand :436467-436474]
+   */
+  zOrder: number;
   /** Key 174: 0 normal, 1 additive, 2 the multiplying one, 3 the inverting one. */
   blend: number;
   /** Key 207: the four groups are the quad's corners rather than its sides. */
@@ -587,8 +604,12 @@ interface CountListener {
   activate: boolean;
   /** Key 104: stays armed after firing. */
   multi: boolean;
-  /** The Count trigger itself, for the spawn guard. */
+  /** The Count trigger itself, for the spawn guard and for Stop. */
   spawner: number;
+  /** The Count trigger's control id, for Stop with key 535. */
+  controlId: number;
+  /** Paused by a Stop trigger: it ignores item changes until resumed. */
+  paused: boolean;
   /** The remap chain in force when it was armed, as flat pairs. */
   remap: readonly number[];
 }
@@ -612,6 +633,10 @@ interface TimerRun {
   /** Key 51, read through the remap in force when the Time trigger fired. */
   group: number;
   spawner: number;
+  /** The Time trigger's control id, for Stop with key 535. */
+  controlId: number;
+  /** Paused by a Stop trigger: its clock holds until resumed. */
+  paused: boolean;
   remap: readonly number[];
 }
 
@@ -640,6 +665,8 @@ const IDLE_TIMER: TimerRun = {
   ignoreWarp: false,
   group: 0,
   spawner: 0,
+  controlId: 0,
+  paused: false,
   remap: [],
 };
 
@@ -978,6 +1005,26 @@ interface AreaTintSource {
   hsv: HsvShift | null;
 }
 
+/** A custom enter effect (3020/3021) sitting on one channel's coming-in or going-out list. */
+export interface CustomEnterEffect {
+  id: number;
+  source: number;
+  effectId: number;
+  length: number;
+  lengthPm: number;
+  offset: number;
+  offsetPm: number;
+  deadzone: number;
+  easing: number;
+  rate: number;
+  /** Enter Tint key 265: how hard it blends at the edge. */
+  percent: number;
+  /** Enter Tint (3021): the channel blend, or null for Enter Fade. */
+  tint: AreaTintSource | null;
+}
+
+const NO_CUSTOM_ENTER: ReadonlyMap<number, readonly CustomEnterEffect[]> = new Map();
+
 /** One Area Tint reaching an object: how far into the area it is (0 at the centre) and how much it tints. */
 export interface AreaTint extends AreaTintSource {
   value: number;
@@ -1012,6 +1059,7 @@ export interface TriggerSnapshot {
   groupEnabled: Int8Array;
   fired: Uint8Array;
   touching: Uint8Array;
+  collisionControl: Uint8Array;
   activeChannel: number;
   channelAt: Int32Array;
   channelReversed: Uint8Array;
@@ -1261,6 +1309,12 @@ export class TriggerRuntime {
   private readonly blocksById = new Map<number, number[]>();
   private readonly collisionPairs: CollisionPair[] = [];
   private readonly collisionTriggers: { spec: TriggerSpec; pair: number }[] = [];
+  /**
+   * Per collision trigger: 0 live, 1 paused by Stop, 2 stopped. Parallel to
+   * `collisionTriggers`; part of the snapshot so a rewind can re-arm.
+   * [gdp controlActionsForTrigger :484873-484899 (CollisionTriggerAction)]
+   */
+  private collisionControl: Uint8Array = new Uint8Array(0);
   /** One byte a pair: were the two overlapping at the end of the last tick. */
   private touching: Uint8Array;
   /** Both players' boxes as (x, y, half) triples, filled by checkTouch. */
@@ -1380,9 +1434,12 @@ export class TriggerRuntime {
       break;
     }
     for (const spec of index.byObject.values()) {
-      if (spec.id < 3006 || spec.id > 3010) continue;
-      this.areaRand = areaRandom(level.objects.length);
-      break;
+      // Area motion/visual, Edit Area, and the custom enter effects all share
+      // the variance table. [gdp applyCustomEnterEffect :90773-90794]
+      if ((spec.id >= 3006 && spec.id <= 3015) || (spec.id >= 3017 && spec.id <= 3021) || spec.id === 3024) {
+        this.areaRand = areaRandom(level.objects.length);
+        break;
+      }
     }
     for (const spec of index.byObject.values()) {
       if (spec.id !== 3016 && spec.id !== 3660 && spec.id !== 3661) continue;
@@ -1395,11 +1452,12 @@ export class TriggerRuntime {
     this.visual = {
       background: level.header.background,
       ground: level.header.ground,
-      middleground: 0,
+      middleground: Number(level.header.raw.kA25 ?? 0) || 0,
       shakeStrength: 0,
       shakeInterval: 0,
       shakeRemaining: 0,
       ghostTrail: false,
+      ghostTrail2: false,
       hidePlayer: false,
       bgEffectHidden: false,
       shader: opts.shader && this.visuals ? carriedShaderState(opts.shader) : createShaderState(),
@@ -1409,6 +1467,8 @@ export class TriggerRuntime {
       animationStarts: new Map(),
       skeletonAnims: new Map(),
       enter: defaultEnterTables(),
+      customEnterIn: NO_CUSTOM_ENTER,
+      customEnterOut: NO_CUSTOM_ENTER,
     };
     this.firedSlot = new Int32Array(level.objects.length).fill(-1);
     let slot = 0;
@@ -1466,6 +1526,7 @@ export class TriggerRuntime {
       }
       this.collisionTriggers.push({ spec, pair: at });
     }
+    this.collisionControl = new Uint8Array(this.collisionTriggers.length);
   }
 
   private resetGroups(): void {
@@ -1495,6 +1556,7 @@ export class TriggerRuntime {
     this.groupEnabled = this.groupEnabled.slice();
     this.fired = this.fired.slice();
     this.touching = this.touching.slice();
+    this.collisionControl = this.collisionControl.slice();
     this.commands = this.commands.map((c) => ({ ...c }));
     this.spawns = this.spawns.map((s) => ({ ...s }));
     this.items = new Map(this.items);
@@ -1533,6 +1595,7 @@ export class TriggerRuntime {
       groupEnabled: this.groupEnabled,
       fired: this.fired,
       touching: this.touching,
+      collisionControl: this.collisionControl,
       activeChannel: this.activeChannel,
       channelAt: this.channelAt,
       channelReversed: this.channelReversed,
@@ -1603,6 +1666,7 @@ export class TriggerRuntime {
     this.groupEnabled = s.groupEnabled;
     this.fired = s.fired;
     this.touching = s.touching;
+    this.collisionControl = s.collisionControl;
     this.shared = true;
     this.activeChannel = s.activeChannel;
     this.channelAt = s.channelAt;
@@ -1636,7 +1700,17 @@ export class TriggerRuntime {
     if (s.advFollow) {
       if (!this.advFollow) this.advFollow = new AdvancedFollowSystem();
       this.advFollow.restore(s.advFollow);
-    } else if (this.advFollow) this.advFollow.restore(cloneAdvFollow({ instances: [], physics: new Map(), dirtySort: false, nextOrdinal: 0 }));
+    } else if (this.advFollow) {
+      this.advFollow.restore(
+        cloneAdvFollow({
+          instances: [],
+          physics: new Map(),
+          dirtySort: false,
+          nextOrdinal: 0,
+          history: { samples: 0, rings: new Map(), ring: new Float32Array(0), nextBase: 0 },
+        }),
+      );
+    }
     this.advMotion = s.advMotion;
     if (s.advMotion && !this.advMotion) this.advMotion = s.advMotion.slice();
     this.onDeath = s.onDeath;
@@ -1825,7 +1899,7 @@ export class TriggerRuntime {
     if (this.timers.size > 0) this.stepTimers(dt);
     if (this.commands.length > 0) this.stepCommands(dt, playerDx, playerDy, cameraDx, cameraDy, playerY);
     else if (this.advFollow?.active) this.stepAdvFollowOnly(dt, playerY);
-    if (this.areas.length > 0 || this.areaGroups.length > 0 || this.areaVisuals.size > 0) this.stepAreas(dt);
+    if (this.areas.length > 0 || this.areaGroups.length > 0) this.stepAreas(dt);
     if (this.visual.shakeRemaining > 0) {
       this.visual.shakeRemaining -= dt;
       if (this.visual.shakeRemaining <= 0) {
@@ -2064,12 +2138,21 @@ export class TriggerRuntime {
       followers = true;
       if (c.kind !== "follow" || followFrom.has(c.followGroup)) continue;
       const main = this.mainObject(c.followGroup);
-      followFrom.set(c.followGroup, main >= 0 ? this.objectPosition(main) : null);
+      followFrom.set(
+        c.followGroup,
+        main >= 0
+          ? (() => {
+              const p = this.objectPosition(main);
+              return [Math.fround(p[0]), Math.fround(p[1])];
+            })()
+          : null,
+      );
     }
     // Without kA27 "Allow Multi-Rotation" only the newest rotate on each
     // target group turns it, one fresh this step included; the older ones run
-    // their clocks on and lose this step's share. A dynamic aim joins the list
-    // without emptying it, so it is never held back and holds nothing back.
+    // their clocks on and lose this step's share. A keyframe that emits a
+    // turn this step joins that list after its pose pass (it registers the
+    // same way, :486625-486638). A dynamic aim joins without emptying it.
     // The port leaves its non-dynamic aim out too, although the game runs one
     // as an ordinary rotate over the trigger's duration: the port turns it at
     // once (see "aim" in stepOne), so there is no running command to weigh.
@@ -2086,10 +2169,15 @@ export class TriggerRuntime {
     //  after that step, prepareMoveActions :486713-486718]
     const newest = this.newestRotate;
     newest.clear();
-    if (!this.multiRotation) {
-      for (const c of this.commands) if (c.kind === "rotate" && !c.finished && !c.paused) newest.set(c.group, c);
-    }
     for (let pass = 0; pass < COMMAND_PASSES; pass++) {
+      if (pass === 1 && !this.multiRotation) {
+        newest.clear();
+        for (const c of this.commands) {
+          if (c.finished || c.paused) continue;
+          if (c.kind === "rotate") newest.set(c.group, c);
+          else if (c.kind === "keyframe" && c.dueRotation !== 0) newest.set(c.group, c);
+        }
+      }
       for (const c of this.commands) {
         if (c.paused) continue;
         // A keyframe works its whole pose out with the scales, then hands
@@ -2116,6 +2204,9 @@ export class TriggerRuntime {
    * before this step's update: player 2 only while a dual is on.
    */
   setAreaPlayers(x1: number, y1: number, p2: [number, number] | null): void {
+    // A dual ending drops player 2's Ghost Trail with the player; starting
+    // one does not copy player 1's. [toggleGhostEffect :92269-92276]
+    if (!p2) this.visual.ghostTrail2 = false;
     this.areaP1x = x1;
     this.areaP1y = y1;
     this.areaP2 = p2;
@@ -2134,22 +2225,22 @@ export class TriggerRuntime {
    *  :469272-469352 → processAreaEffects :468901-469250; the push taken out
    *  before an object is measured, processAreaMoveGroupAction :437614]
    */
+  /**
+   * Area Move, Rotate and Scale only — once per physics step. Fade and Tint
+   * run from updateVisuals, once a frame, as processAreaVisualActions does.
+   * [gdp processAreaActions :469272-469352]
+   */
   private stepAreas(dt: number): void {
     this.fork();
     const before = this.areaGroups;
     const offsets = new Map<number, AreaOffset>();
     const groups = new Set<number>();
     this.areaOffsets = offsets;
-    // Then the fades, then the tints, which only change how objects look.
-    // [gdp processAreaVisualActions :470151-470155]
-    const visuals = new Map<number, AreaVisual>();
-    const fadeAt = new Map<number, number>();
-    for (const kind of [2, 1, 0, 3, 4] as const) {
+    for (const kind of [2, 1, 0] as const) {
       for (const a of this.areas) {
-        if (a.kind === kind) this.stepArea(a, dt, offsets, groups, visuals, fadeAt);
+        if (a.kind === kind) this.stepAreaMotion(a, dt, offsets, groups);
       }
     }
-    this.areaVisuals = visuals.size > 0 ? visuals : NO_AREA_VISUALS;
     for (const g of before) this.markDirty(g);
     for (const g of groups) {
       this.noteMoved(g);
@@ -2158,40 +2249,125 @@ export class TriggerRuntime {
     this.areaGroups = groups.size > 0 ? [...groups] : [];
   }
 
-  private stepArea(
-    a: AreaInstance,
-    dt: number,
-    offsets: Map<number, AreaOffset>,
-    groups: Set<number>,
-    visuals: Map<number, AreaVisual>,
-    fadeAt: Map<number, number>,
-  ): void {
-    const v = a.vals;
+  /** Area Fade and Tint, once a frame. [gdp processAreaVisualActions :470151-470155] */
+  private stepAreaVisuals(dt: number): void {
+    let any = false;
+    for (const a of this.areas) {
+      if (a.kind >= 3) {
+        any = true;
+        break;
+      }
+    }
+    if (!any && this.areaVisuals.size === 0) return;
+    // Tweens and the dual-easing counter mutate the instances; fork so a
+    // checkpoint that shares them is not stepped.
+    if (any) this.fork();
+    const visuals = new Map<number, AreaVisual>();
+    const fadeAt = new Map<number, number>();
+    for (const kind of [3, 4] as const) {
+      for (const a of this.areas) {
+        if (a.kind === kind) this.stepAreaVisual(a, dt, visuals, fadeAt);
+      }
+    }
+    this.areaVisuals = visuals.size > 0 ? visuals : NO_AREA_VISUALS;
+  }
+
+  private stepAreaTweens(a: AreaInstance, dt: number): void {
     // Edit Area's tweens land first. [gdp updateTransitions :717056-717096]
-    if (a.tweens.length > 0) {
-      for (const t of a.tweens) {
-        t.elapsed += dt;
-        if (t.elapsed < t.duration) {
-          v[t.key] = t.from + (t.to - t.from) * areaEase(t.elapsed / t.duration, t.easing, t.rate);
-        } else v[t.key] = t.to;
-      }
-      a.tweens = a.tweens.filter((t) => t.elapsed < t.duration);
+    if (a.tweens.length === 0) return;
+    const v = a.vals;
+    for (const t of a.tweens) {
+      t.elapsed += dt;
+      if (t.elapsed < t.duration) {
+        v[t.key] = t.from + (t.to - t.from) * areaEase(t.elapsed / t.duration, t.easing, t.rate);
+      } else v[t.key] = t.to;
     }
-    let cx = 0;
-    let cy = 0;
-    if (a.centre === -1 || a.centre === -2) {
-      if (a.centre === -2 && this.areaP2) [cx, cy] = this.areaP2;
-      else {
-        cx = this.areaP1x;
-        cy = this.areaP1y;
-      }
-    } else if (a.centre < 0) {
-      // The screen's corners and edges: the camera is not simulated here.
-      return;
-    } else {
-      const main = this.mainObject(a.centre);
-      if (main >= 0) [cx, cy] = this.objectPosition(main);
+    a.tweens = a.tweens.filter((t) => t.elapsed < t.duration);
+  }
+
+  /**
+   * The centre an area measures from: a group's main object, a player, or one
+   * of the nine screen anchors (key 538 ≤ −3).
+   * [gdp processAreaEffects :468953-469044]
+   */
+  private areaCentrePoint(centre: number): [number, number] | null {
+    if (centre === -1 || centre === -2) {
+      if (centre === -2 && this.areaP2) return this.areaP2;
+      return [this.areaP1x, this.areaP1y];
     }
+    if (centre < 0) {
+      const box = this.areaViewBox();
+      let ax: number;
+      let ay: number;
+      switch (centre) {
+        case -4:
+          ax = 0;
+          ay = 0;
+          break;
+        case -5:
+          ax = 0;
+          ay = box.h * 0.5;
+          break;
+        case -6:
+          ax = 0;
+          ay = box.h;
+          break;
+        case -7:
+          ax = box.w * 0.5;
+          ay = 0;
+          break;
+        case -8:
+          ax = box.w * 0.5;
+          ay = box.h;
+          break;
+        case -9:
+          ax = box.w;
+          ay = 0;
+          break;
+        case -10:
+          ax = box.w;
+          ay = box.h * 0.5;
+          break;
+        case -11:
+          ax = box.w;
+          ay = box.h;
+          break;
+        default:
+          ax = box.w * 0.5;
+          ay = box.h * 0.5;
+          break;
+      }
+      return [box.left + ax, box.bottom + ay];
+    }
+    const main = this.mainObject(centre);
+    if (main < 0) return null;
+    return this.objectPosition(main);
+  }
+
+  /**
+   * The view as area screen centres use it: a 16:9 window about the camera
+   * that follows player 1, the same size objectActive uses.
+   * [gdp processAreaEffects :469006-469008; objectActive below]
+   */
+  private areaViewBox(): { left: number; bottom: number; w: number; h: number } {
+    const cam = this.camera;
+    const zoom = Math.min(8, Math.max(0.1, cam.zoom));
+    const h = VIEW_UNITS_HIGH / zoom;
+    const w = (h * 16) / 9;
+    const go = this.passRotated ? cam.gameplayOffsetY : cam.gameplayOffsetX;
+    const raw = this.passRotated ? cam.gameplayOffsetYRaw : cam.gameplayOffsetXRaw;
+    const lead = ((this.viewReversed ? -1 : 1) * go) / (raw ? 1 : zoom);
+    const cx = (cam.staticX.on ? cam.staticX.target : this.viewX + (this.passRotated ? 0 : lead)) + cam.offsetX;
+    const cy = (cam.staticY.on ? cam.staticY.target : this.viewY + (this.passRotated ? lead : 0)) + cam.offsetY;
+    return { left: cx - w / 2, bottom: cy - h / 2, w, h };
+  }
+
+  private stepAreaMotion(a: AreaInstance, dt: number, offsets: Map<number, AreaOffset>, groups: Set<number>): void {
+    this.stepAreaTweens(a, dt);
+    const centre = this.areaCentrePoint(a.centre);
+    if (!centre) return;
+    let [cx, cy] = centre;
+    const v = a.vals;
     a.counter += 2;
     if (a.axis !== 0) {
       v[252] = v[220];
@@ -2220,10 +2396,6 @@ export class TriggerRuntime {
         v[282],
         a.invert,
       );
-      if (a.kind >= 3) {
-        this.areaVisual(a, i, at, visuals, fadeAt);
-        continue;
-      }
       if (at >= 1) {
         if (a.dual) a.sides.set(i, 0);
         continue;
@@ -2279,6 +2451,49 @@ export class TriggerRuntime {
       }
       if (fresh) offsets.set(i, off);
       groups.add(a.group);
+    }
+  }
+
+  private stepAreaVisual(
+    a: AreaInstance,
+    dt: number,
+    visuals: Map<number, AreaVisual>,
+    fadeAt: Map<number, number>,
+  ): void {
+    this.stepAreaTweens(a, dt);
+    const centre = this.areaCentrePoint(a.centre);
+    if (!centre) return;
+    let [cx, cy] = centre;
+    const v = a.vals;
+    a.counter += 2;
+    if (a.axis !== 0) {
+      v[252] = v[220];
+      v[253] = v[221];
+    }
+    cx += v[220];
+    cy += v[252];
+    if (a.twoSided) v[263] = -Math.abs(v[263]);
+    const members = this.index.groups.get(a.group);
+    if (!members) return;
+    const rand = this.areaRand as AreaRandom;
+    for (const i of members) {
+      const [ox, oy] = this.objectPosition(i);
+      const length = v[222] + v[223] * variance(rand, i, 223);
+      const { v: at } = areaValue(
+        a.axis,
+        ox,
+        oy,
+        cx,
+        cy,
+        v[221] * variance(rand, i, 221),
+        v[253] * variance(rand, i, 253),
+        length,
+        v[263],
+        v[264],
+        v[282],
+        a.invert,
+      );
+      this.areaVisual(a, i, at, visuals, fadeAt);
     }
   }
 
@@ -2529,12 +2744,16 @@ export class TriggerRuntime {
       }
       case "aim": {
         // Turn the group so it points at another group, and keep pointing if
-        // the trigger asked for that.
+        // the trigger asked for that. Dynamic mode closes key 403's share of
+        // the remaining angle each step (at least 1). [gdp :445487-445490]
         const want = this.aimAngle(c.centre > 0 ? c.centre : c.group, c.followGroup);
         if (want !== null) {
           const target = want + c.angleOffset;
           const delta = wrapDegrees(target - this.groupSpin[c.group]);
-          if (delta !== 0) this.rotateGroup(c.group, c.centre, delta, false);
+          if (delta !== 0) {
+            const step = c.dynamic ? delta / Math.max(1, c.easing | 0) : delta;
+            this.rotateGroup(c.group, c.centre, step, false);
+          }
         }
         if (!c.dynamic) c.finished = true;
         break;
@@ -2573,7 +2792,16 @@ export class TriggerRuntime {
     c.poseRotation = pose.rotation;
     if (Math.abs(pose.scaleX) >= 0.01 && Math.abs(pose.scaleY) >= 0.01) {
       if (pose.scaleX !== c.poseScaleX || pose.scaleY !== c.poseScaleY) {
-        this.scaleGroup(c.group, c.centre, safeRatio(pose.scaleX, c.poseScaleX), safeRatio(pose.scaleY, c.poseScaleY));
+        // The game's temp transform sets relativeRotation, so the scale axes
+        // follow the centre's current turn. [gdp prepareMoveActions :486661]
+        const along = this.centreAngle(c.centre > 0 ? c.centre : c.group);
+        this.scaleGroup(
+          c.group,
+          c.centre,
+          safeRatio(pose.scaleX, c.poseScaleX),
+          safeRatio(pose.scaleY, c.poseScaleY),
+          along,
+        );
       }
       c.poseScaleX = pose.scaleX;
       c.poseScaleY = pose.scaleY;
@@ -2601,13 +2829,27 @@ export class TriggerRuntime {
   /** A keyframe's turn in the rotate pass, and its move in the move pass. */
   private handOverKeyframe(c: Command, pass: number): void {
     if (pass === 1 && c.dueRotation !== 0) {
-      this.rotateGroup(c.group, c.centre, c.dueRotation, false);
+      // Spend the share either way; only the listed command turns anything.
+      // [gdp stepTransformCommand :716560-716590; processRotationActions
+      //  :439888-439901]
+      const listed = this.multiRotation || this.newestRotate.get(c.group) === c;
+      if (listed) this.rotateGroup(c.group, c.centre, c.dueRotation, false);
       c.dueRotation = 0;
     } else if (pass === 3 && (c.dueX !== 0 || c.dueY !== 0)) {
       this.translateGroup(c.group, c.dueX, c.dueY);
       c.dueX = 0;
       c.dueY = 0;
     }
+  }
+
+  /** A group's main object's turn now: its own angle plus what its groups have spun. */
+  private centreAngle(group: number): number {
+    const pivot = this.mainObject(group);
+    if (pivot < 0) return group > 0 && group < this.index.groupCount ? this.groupSpin[group] : 0;
+    const o = this.level.objects[pivot];
+    let angle = o.rotation;
+    if (this.objectTransform(pivot, this.blockScratch)) angle += this.blockScratch[6];
+    return angle;
   }
 
   /**
@@ -2696,9 +2938,12 @@ export class TriggerRuntime {
       if (!from) continue;
       const main = this.mainObject(first.followGroup);
       if (main < 0) continue;
+      // The game diffs float copies of the position, so a leader a float
+      // cannot place exactly creeps the follower a little every step.
+      // [gdp processFollowActions :428340-428420]
       const now = this.objectPosition(main);
-      const dx = (now[0] - from[0]) * mods.followModX;
-      const dy = (now[1] - from[1]) * mods.followModY;
+      const dx = (Math.fround(now[0]) - Math.fround(from[0])) * mods.followModX;
+      const dy = (Math.fround(now[1]) - Math.fround(from[1])) * mods.followModY;
       if (dx !== 0 || dy !== 0) this.translateGroup(first.group, dx, dy);
     }
   }
@@ -2828,15 +3073,28 @@ export class TriggerRuntime {
     this.markDirty(group);
   }
 
-  private scaleGroup(group: number, centre: number, sx: number, sy: number): void {
+  /**
+   * Scale about the centre where it is now. `along` turns the scale axes (a
+   * keyframe's temp transform sets relativeRotation so they follow the
+   * centre). A non-uniform scale after a rotate leaves shear in the group
+   * affine; the draw list's carry applies that whole matrix, which is what
+   * the game gets by decomposing each object's scale/rotation/skew.
+   * [gdp processTransformActions :440221, :440265-440490]
+   */
+  private scaleGroup(group: number, centre: number, sx: number, sy: number, along = 0): void {
     if (group <= 0 || group >= this.index.groupCount) return;
     if (sx === 1 && sy === 1) return;
+    if (along !== 0) {
+      // R(-along) ∘ S ∘ R(along) about the centre, without touching groupSpin.
+      this.rotateGroup(group, centre, -along, true);
+      this.scaleGroup(group, centre, sx, sy, 0);
+      this.rotateGroup(group, centre, along, true);
+      return;
+    }
     this.fork();
     this.noteMoved(group);
     this.groupScale[group * 2] *= sx;
     this.groupScale[group * 2 + 1] *= sy;
-    // As for a rotate: the main object where it is now, or in place.
-    // [gdp processTransformActions :440221, :440322-440327]
     const pivot = this.mainObject(centre);
     if (pivot >= 0) {
       const o = this.pivotAt(pivot);
@@ -3189,7 +3447,9 @@ export class TriggerRuntime {
       if (now === this.touching[i]) continue;
       this.fork();
       this.touching[i] = now;
-      for (const entry of this.collisionTriggers) {
+      for (let ti = 0; ti < this.collisionTriggers.length; ti++) {
+        if (this.collisionControl[ti] !== 0) continue;
+        const entry = this.collisionTriggers[ti];
         if (entry.pair !== i) continue;
         const spec = entry.spec;
         if (this.objectDisabled(spec.index)) continue;
@@ -3412,7 +3672,10 @@ export class TriggerRuntime {
         return;
       case 32:
       case 33:
+        // Player 1 always; player 2 only while the dual is on (+870).
+        // [PlayLayer::toggleGhostEffect :92269-92276]
         this.visual.ghostTrail = id === 32;
+        if (this.areaP2) this.visual.ghostTrail2 = id === 32;
         return;
       case 1612:
       case 1613:
@@ -3630,7 +3893,10 @@ export class TriggerRuntime {
         this.visual.bgEffectHidden = true;
         return;
       case 3613:
-        // Layout ran at load (positionUIObjects); firing only notes the event.
+        // Re-pin the target group (positionUIObjects at load; a mid-level
+        // fire refreshes the same anchors). Objects stay in the world draw
+        // list with a screen offset rather than a separate UI layer.
+        this.layoutUITrigger(spec);
         this.events.push({ tick: this.tick, kind: "ui", id: spec.index });
         return;
 
@@ -3690,12 +3956,13 @@ export class TriggerRuntime {
    * An End trigger (3600): the level ends, once, and not for a dead player.
    * It spawns key 51, stops the level time, and hands the sim where the
    * player goes: the trigger's own position, or key 71's main object's. The
-   * game then locks both players and flies them there over a second before
-   * levelComplete — at once with key 487; key 460 skips the end effects (the
-   * ghost trail and the circles) and key 461 the end sound. It also holds
-   * the time warp at 1 from here on, which the port, whose warp only sets
-   * the music's rate, does not. Triggered by passing, touching or a spawn,
-   * it ends a classic level as well as a platformer.
+   * sim then locks both players, optionally turns on the ghost trail, and
+   * flies them there over a second before levelComplete — at once with key
+   * 487; key 460 skips the end effects (the ghost trail and the circles) and
+   * key 461 the end sound. It also holds the time warp at 1 from here on,
+   * which the port, whose warp only sets the music's rate, does not.
+   * Triggered by passing, touching or a spawn, it ends a classic level as
+   * well as a platformer.
    * [gdp EndTriggerGameObject::triggerObject :315851-315875 → vtable +628,
    *  PlayLayer::activatePlatformerEndTrigger :93034-93065 (the slot: +624 is
    *  activateEndTrigger, 1931's call :314937-314941, and the two are
@@ -3743,6 +4010,8 @@ export class TriggerRuntime {
       copyId: int(spec, 50),
       copyHsv: hsvOf(spec, 49),
       copyOpacity: flag(spec, 60),
+      trigger: spec.index,
+      controlId: spec.controlId,
     };
     this.colors.startFade(change);
     // The legacy background trigger can tint the ground with the same colour.
@@ -3922,8 +4191,11 @@ export class TriggerRuntime {
   /**
    * An enter-effect trigger: its code into the coming-in table, the going-out
    * one or both (key 217: 0 both, 1 in, 2 out) on its channel (key 344,
-   * clamped to 0-100). [GJBaseGameLayer::updateActiveEnterEffect
-   *  :467525-467625; EnterEffectObject::customObjectSetup :299961-299972]
+   * clamped to 0-100). A custom trigger (3017-3021) also pushes onto that
+   * channel's custom list; any other code clears it.
+   * [GJBaseGameLayer::updateActiveEnterEffect :467525-467625;
+   *  addCustomEnterEffect :467370-467508; EnterEffectObject::customObjectSetup
+   *  :299961-299972]
    */
   private runEnterEffect(spec: TriggerSpec): void {
     if (!this.visuals) return;
@@ -3931,13 +4203,87 @@ export class TriggerRuntime {
     const channel = Math.max(0, Math.min(100, int(spec, 344)));
     const mode = int(spec, 217);
     const tables = this.visual.enter;
-    const intoIn = mode >= 0 && mode <= 1 && tables.in[channel] !== code;
-    const intoOut = (mode === 0 || mode === 2) && tables.out[channel] !== code;
+    const intoIn = mode >= 0 && mode <= 1;
+    const intoOut = mode === 0 || mode === 2;
     if (!intoIn && !intoOut) return;
-    const next = { in: intoIn ? Uint8Array.from(tables.in) : tables.in, out: intoOut ? Uint8Array.from(tables.out) : tables.out };
+    const next = {
+      in: intoIn ? Uint8Array.from(tables.in) : tables.in,
+      out: intoOut ? Uint8Array.from(tables.out) : tables.out,
+    };
     if (intoIn) next.in[channel] = code;
     if (intoOut) next.out[channel] = code;
     this.visual.enter = next;
+    if (code === ENTER.custom) {
+      const effect = this.customEnterOf(spec);
+      if (intoIn) this.visual.customEnterIn = this.pushCustomEnter(this.visual.customEnterIn, channel, effect);
+      if (intoOut) this.visual.customEnterOut = this.pushCustomEnter(this.visual.customEnterOut, channel, effect);
+    } else {
+      if (intoIn && this.visual.customEnterIn.has(channel)) {
+        const cleared = new Map(this.visual.customEnterIn);
+        cleared.delete(channel);
+        this.visual.customEnterIn = cleared.size > 0 ? cleared : NO_CUSTOM_ENTER;
+      }
+      if (intoOut && this.visual.customEnterOut.has(channel)) {
+        const cleared = new Map(this.visual.customEnterOut);
+        cleared.delete(channel);
+        this.visual.customEnterOut = cleared.size > 0 ? cleared : NO_CUSTOM_ENTER;
+      }
+    }
+  }
+
+  /** One custom enter trigger's fields, as applyCustomEnterEffect reads them. */
+  private customEnterOf(spec: TriggerSpec): CustomEnterEffect {
+    return {
+      id: spec.id,
+      source: spec.index,
+      effectId: int(spec, 225),
+      length: num(spec, 222),
+      lengthPm: num(spec, 223),
+      offset: num(spec, 220),
+      offsetPm: num(spec, 221),
+      deadzone: num(spec, 282),
+      easing: int(spec, 242),
+      rate: areaRate(num(spec, 243)),
+      percent: num(spec, 265),
+      tint:
+        spec.id === 3021
+          ? { channel: int(spec, 260), main: !flag(spec, 66), detail: !flag(spec, 65), hsv: flag(spec, 278) ? parseHsv(spec.props[49]) : null }
+          : null,
+    };
+  }
+
+  /**
+   * Push or replace a custom enter on one channel. A non-zero Area Effect ID
+   * replaces the running instance that shares it; otherwise a fresh one is
+   * appended. [gdp addCustomEnterEffect :467370-467508]
+   */
+  private pushCustomEnter(
+    map: ReadonlyMap<number, readonly CustomEnterEffect[]>,
+    channel: number,
+    effect: CustomEnterEffect,
+  ): ReadonlyMap<number, readonly CustomEnterEffect[]> {
+    const next = new Map(map);
+    let list = [...(next.get(channel) ?? [])];
+    if (effect.effectId > 0) {
+      const at = list.findIndex((e) => e.effectId === effect.effectId);
+      if (at >= 0) list = list.filter((_, i) => i !== at);
+    }
+    const same = list.findIndex((e) => e.source === effect.source);
+    if (same >= 0) list[same] = effect;
+    else list.push(effect);
+    next.set(channel, list);
+    return next;
+  }
+
+  /** The custom enter effects on a channel, coming in or going out. */
+  customEnters(channel: number, entering: boolean): readonly CustomEnterEffect[] {
+    const map = entering ? this.visual.customEnterIn : this.visual.customEnterOut;
+    return map.get(channel) ?? [];
+  }
+
+  /** One object's draw from the area variance table, or 0 without one. */
+  areaVariance(objectIndex: number, key: number): number {
+    return this.areaRand ? variance(this.areaRand, objectIndex, key) : 0;
   }
 
   /** Alpha fades a whole group's opacity rather than a colour channel's. */
@@ -3988,14 +4334,24 @@ export class TriggerRuntime {
 
   private runSequence(spec: TriggerSpec, depth: number): void {
     // A sequence walks its list one step per activation; the position is a
-    // counter keyed on the trigger itself.
+    // counter keyed on the trigger itself. Key 436 is the wrap mode once the
+    // list is spent: 0 stop, 1 loop from the start, 2 stay on the last.
+    // [gdp SequenceTriggerGameObject::triggerObject :315973-316114
+    //  (+1708 mode at :316076-316086); customObjectSetup key 436 :314380-314383]
     const entries = idList(spec, 435);
     if (entries.length === 0) return;
+    const steps = Math.ceil(entries.length / 2);
     const key = -spec.index - 1;
-    const at = (this.items.get(key) ?? 0) % Math.ceil(entries.length / 2);
+    let next = (this.items.get(key) ?? 0) + 1;
+    if (next > steps) {
+      const mode = int(spec, 436);
+      if (mode === 0) return;
+      if (mode === 2) next = steps;
+      else next = 1;
+    }
     this.fork();
-    this.items.set(key, at + 1);
-    this.spawnGroup(this.grp(entries[at * 2]), spec.index, false, 0, depth);
+    this.items.set(key, next);
+    this.spawnGroup(this.grp(entries[(next - 1) * 2]), spec.index, false, 0, depth);
   }
 
   /**
@@ -4026,11 +4382,68 @@ export class TriggerRuntime {
       else for (const s of this.spawns) if (members.has(s.spawner)) s.paused = mode === 1;
     }
     if (this.visuals) {
-      this.colors.controlPulses((p) => (byControl ? p.controlId === spec.target : members.has(p.trigger ?? -1)), mode);
+      const colourHit = (id: number | undefined, control: number | undefined): boolean =>
+        byControl ? control === spec.target : members.has(id ?? -1);
+      this.colors.controlPulses((p) => colourHit(p.trigger, p.controlId), mode);
+      this.colors.controlFades((f) => colourHit(f.trigger, f.controlId), mode);
     }
     this.stopCameraTweens(spec, mode, byControl);
     this.stopTouches(spec, mode, byControl);
     this.stopAdvancedFollow(spec, mode, byControl, members);
+    this.stopCounts(spec, mode, byControl, members);
+    this.stopCollisions(spec, mode, byControl, members);
+    this.stopTimers(spec, mode, byControl, members);
+  }
+
+  /**
+   * Stop, Pause and Resume on armed Count listeners.
+   * [gdp controlActionsForTrigger :484729-484763 (CountTriggerAction)]
+   */
+  private stopCounts(spec: TriggerSpec, mode: number, byControl: boolean, members: Set<number>): void {
+    if (this.countListeners.length === 0) return;
+    const hit = (l: CountListener): boolean => (byControl ? l.controlId === spec.target : members.has(l.spawner));
+    if (!this.countListeners.some(hit)) return;
+    if (mode === 0) this.countListeners = this.countListeners.filter((l) => !hit(l));
+    else for (const l of this.countListeners) if (hit(l)) l.paused = mode === 1;
+  }
+
+  /**
+   * Stop, Pause and Resume on Collision / Instant Collision triggers.
+   * [gdp controlActionsForTrigger :484873-484899 (CollisionTriggerAction)]
+   */
+  private stopCollisions(spec: TriggerSpec, mode: number, byControl: boolean, members: Set<number>): void {
+    if (this.collisionTriggers.length === 0) return;
+    for (let i = 0; i < this.collisionTriggers.length; i++) {
+      const t = this.collisionTriggers[i].spec;
+      const hit = byControl ? t.controlId === spec.target : members.has(t.index);
+      if (!hit) continue;
+      if (mode === 0) this.collisionControl[i] = 2;
+      else if (mode === 1) {
+        if (this.collisionControl[i] !== 2) this.collisionControl[i] = 1;
+      } else if (mode === 2 && this.collisionControl[i] === 1) this.collisionControl[i] = 0;
+    }
+  }
+
+  /**
+   * Stop, Pause and Resume on timers a Time trigger started, and on Time Event
+   * watches from triggers in the target group.
+   * [gdp controlActionsForTrigger :484801-484871 (3614 TimerItem, 3615
+   *  TimerTriggerAction)]
+   */
+  private stopTimers(spec: TriggerSpec, mode: number, byControl: boolean, members: Set<number>): void {
+    for (const [id, run] of [...this.timerRuns]) {
+      const hit = byControl ? run.controlId === spec.target : members.has(run.spawner);
+      if (!hit) continue;
+      if (mode === 0) {
+        this.timers.delete(id);
+        this.timerRuns.delete(id);
+      } else this.timerRuns.set(id, { ...run, paused: mode === 1 });
+    }
+    if (byControl || this.timerWatches.length === 0) return;
+    const watchHit = (w: TimerWatch): boolean => members.has(w.spawner);
+    if (mode === 0 && this.timerWatches.some(watchHit)) {
+      this.timerWatches = this.timerWatches.filter((w) => !watchHit(w));
+    }
   }
 
   /**
@@ -4080,6 +4493,9 @@ export class TriggerRuntime {
 
   private runMove(spec: TriggerSpec): void {
     if (spec.target <= 0) return;
+    // Key 393 (Small Step, +1336) is parsed and saved but never read by any
+    // move path in 2.206. [gdp trigger-semantics.md; +1336 reads only at
+    //  :318173/:318182 (save) and :649109 (getter)]
     const c = newCommand("move", this.grp(spec.target));
     c.duration = spec.duration;
     c.easing = spec.easing;
@@ -4162,6 +4578,10 @@ export class TriggerRuntime {
     c.lockRotation = flag(spec, 70);
     // Aim mode replaces the angle outright: the group is turned to face another
     // group rather than by a fixed amount, and in dynamic mode it keeps facing.
+    // Key 403 (editor "Easing:", Geode m_dynamicModeEasing) is the per-step
+    // divisor of the remaining angle while dynamic — not the cocos curve on
+    // keys 30/85. Absent or below 1 means 1. [gdp processDynamicObjectActions
+    //  :445487-445490; SetupRotateCommandPopup::init :554154-554173]
     const aimAt = this.grp(int(spec, 401));
     if (aimAt > 0) {
       const aim = newCommand("aim", c.group);
@@ -4170,8 +4590,7 @@ export class TriggerRuntime {
       aim.angleOffset = num(spec, 402);
       aim.dynamic = flag(spec, 397);
       aim.duration = aim.dynamic ? (spec.duration > 0 ? spec.duration : -1) : 0;
-      aim.easing = spec.easing;
-      aim.easingRate = spec.easingRate;
+      aim.easing = int(spec, 403);
       aim.controlId = spec.controlId;
       aim.trigger = spec.index;
       this.fork();
@@ -4428,7 +4847,10 @@ export class TriggerRuntime {
       if (!path) continue;
       const target = spec.target > 0 ? spec.target : Math.trunc(Number(o.props[51] ?? 0));
       const c = newCommand("keyframe", this.grp(target));
-      c.centre = c.group;
+      // Parent ID (key 71) is the rotation/scale centre; without one the
+      // animated group is its own centre. [gdp createKeyframeCommand
+      //  :489921-489935; Setup help: Parent ID]
+      c.centre = spec.target2 > 0 ? this.grp(spec.target2) : c.group;
       c.controlId = spec.controlId;
       c.duration = path.duration;
       c.path = path;
@@ -4479,6 +4901,8 @@ export class TriggerRuntime {
         activate: spec.activateGroup,
         multi: flag(spec, 104),
         spawner: spec.index,
+        controlId: spec.controlId,
+        paused: false,
         remap: flatten(remap),
       },
     ];
@@ -4876,7 +5300,17 @@ export class TriggerRuntime {
       if (v === 0) continue;
       (o[field] as boolean) = v === 1;
     }
-    if (spec.props[574] !== undefined) o.respawnTime = num(spec, 574, o.respawnTime);
+    // Key 573 turns the edit on (1) or clears the delay to 0 (−1); key 574 is
+    // the seconds, clamped 1..10. [gdp processOptionsTrigger :429863-429882]
+    const edit = int(spec, 573);
+    if (edit === 1) {
+      const raw = num(spec, 574, o.respawnTime);
+      o.respawnTime = raw <= 1 ? 1 : raw >= 10 ? 10 : raw;
+      o.editRespawnTime = true;
+    } else if (edit !== 0) {
+      o.respawnTime = 0;
+      o.editRespawnTime = false;
+    }
   }
 
   /**
@@ -4902,10 +5336,12 @@ export class TriggerRuntime {
       if (at >= 0) list.splice(at, 1);
       return;
     }
+    const object = this.level.objects[spec.index];
     const state: GradientState = {
       id,
       object: spec.index,
       layer: Math.max(1, int(spec, 202)),
+      zOrder: effectiveZOrder(object?.zOrder ?? null, 0),
       blend: Math.trunc(num(spec, 174)),
       vertexMode: flag(spec, 207),
       groups: [int(spec, 203), int(spec, 204), int(spec, 205), int(spec, 206)],
@@ -4984,29 +5420,35 @@ export class TriggerRuntime {
   }
 
   /**
-   * positionUIObjects does once at load. [gdp :444377-444607, :467060]
+   * positionUIObjects does once at load, and again when a UI trigger fires.
+   * [gdp :444377-444607, :467060]
    */
   private layoutUIObjects(): void {
     for (const spec of this.index.byObject.values()) {
       if (spec.id !== 3613) continue;
-      const keys = uiKeysOf(spec.props);
-      if (keys.group <= 0) continue;
-      const guide = keys.target > 0 ? this.mainObject(this.grp(keys.target)) : -1;
-      const guideX = guide >= 0 ? this.level.objects[guide].x : 0;
-      const guideY = guide >= 0 ? this.level.objects[guide].y : 0;
-      for (const i of this.index.groups.get(keys.group) ?? []) {
-        const o = this.level.objects[i];
-        this.uiAnchors.set(i, {
-          objX: o.x,
-          objY: o.y,
-          guideX,
-          guideY,
-          xref: keys.xref,
-          yref: keys.yref,
-          scaleX: keys.scaleX,
-          scaleY: keys.scaleY,
-        });
-      }
+      this.layoutUITrigger(spec);
+    }
+  }
+
+  /** Pin one UI trigger's target group about its guide. */
+  private layoutUITrigger(spec: TriggerSpec): void {
+    const keys = uiKeysOf(spec.props);
+    if (keys.group <= 0) return;
+    const guide = keys.target > 0 ? this.mainObject(this.grp(keys.target)) : -1;
+    const guideX = guide >= 0 ? this.level.objects[guide].x : 0;
+    const guideY = guide >= 0 ? this.level.objects[guide].y : 0;
+    for (const i of this.index.groups.get(keys.group) ?? []) {
+      const o = this.level.objects[i];
+      this.uiAnchors.set(i, {
+        objX: o.x,
+        objY: o.y,
+        guideX,
+        guideY,
+        xref: keys.xref,
+        yref: keys.yref,
+        scaleX: keys.scaleX,
+        scaleY: keys.scaleY,
+      });
     }
   }
 
@@ -5040,6 +5482,10 @@ export class TriggerRuntime {
       if (!this.countListeners.includes(l) || l.prev === value) continue;
       const prev = l.prev;
       l.prev = value;
+      // A paused Count still tracks the value so a resume does not fire for a
+      // cross that happened while it was held. [gdp controlActionsForTrigger
+      //  :484750-484759]
+      if (l.paused) continue;
       const reached = prev < l.target ? value >= l.target : prev > l.target && value <= l.target;
       if (!reached) continue;
       if (!l.multi) this.countListeners = this.countListeners.filter((x) => x !== l);
@@ -5080,6 +5526,8 @@ export class TriggerRuntime {
       ignoreWarp: flag(spec, 469),
       group: this.grp(spec.target),
       spawner: spec.index,
+      controlId: spec.controlId,
+      paused: false,
       remap: flatten(remap),
     });
   }
@@ -5114,7 +5562,7 @@ export class TriggerRuntime {
     for (const id of [...this.timers.keys()]) {
       const run = this.timerRuns.get(id) ?? IDLE_TIMER;
       const before = this.timers.get(id) ?? 0;
-      if (run.running) {
+      if (run.running && !run.paused) {
         // The game passes the warp along beside the step; dividing it back
         // out for key 469 is this port's reading of it. [guess]
         const step = run.ignoreWarp && this.timeWarp !== 1 ? dt / this.timeWarp : dt;
@@ -5255,6 +5703,9 @@ export class TriggerRuntime {
     // the colour fades as the game orders them. [gdp GJBaseGameLayer::update
     //  :469728-469734 → updateShaderLayer :424443ff]
     stepShaderState(this.visual.shader, dt);
+    // Area Fade and Tint, once a frame from the visibility pass.
+    // [gdp processAreaVisualActions :470151-470155, from updateVisibility]
+    if (this.areas.length > 0 || this.areaVisuals.size > 0) this.stepAreaVisuals(dt);
   }
 
   /**

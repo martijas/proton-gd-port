@@ -35,31 +35,36 @@ const DONE: TriggerEntry = { status: "done" };
  * an object latches its own channel's entry as it starts to come in.
  */
 const ENTER_TIMED: TriggerEntry = DONE;
-/** The audio triggers: all of it plays but the reverb. */
+/** The audio triggers. Reverb is a convolution of FMOD's preset numbers. */
 const AUDIO: TriggerEntry = {
-  status: "partial",
-  note: "channels, preps, edits, proximity and the checkpoint replay are played; reverb (407, 502, 503) is not",
+  status: "done",
+  note: "channels, preps, edits, proximity, checkpoint replay and reverb (407/502/503); the reverb convolves FMOD's preset numbers rather than running FMOD's SFXREVERB",
 };
 /** The Ghost Trail: the fading copies of the icon render/ghostTrail.ts draws behind the player, which these start and stop. */
 const TRAIL: TriggerEntry = { status: "done", note: "fading copies of the icon follow the player while it is on" };
 /**
- * Distortion shaders whose centres do not turn with the camera, matching the
- * lens circle. Values, easing, follow/invert and the band are the game's.
+ * Distortion shaders whose centres turn with Camera Rotate about the screen
+ * middle. Values, easing, follow/invert and the band are the game's.
  */
 const SHADER_CENTRE: TriggerEntry = {
-  status: "partial",
-  note: "drawn through the game's shader; the centre does not turn with the camera, and a target the port cannot place falls back to keys 290 and 291",
+  status: "done",
+  note: "drawn through the game's shader; follow and fixed centres turn with the camera; a target the port cannot place falls back to keys 290 and 291",
 };
 const AREA: TriggerEntry = { status: "todo", note: "the area triggers pick their objects at fire time; not built" };
 /** Area Move, Rotate and Scale: worked out every step from each object's distance to the centre. */
 const AREA_MOTION: TriggerEntry = {
   status: "partial",
-  note: "falloff, easing, dual easing, variance, priority and the players or a group as centre are the game's; a screen-corner centre does nothing, group parents are not moved as one piece, and the variance table's seed is not the game's",
+  note: "falloff, easing, dual easing, variance, priority, the players or a group as centre, and the screen-edge centres are the game's; group parents are not moved as one piece, and the variance table's seed is not the game's",
 };
 /** Area Fade and Tint: colour only, once a frame. */
 const AREA_VISUAL: TriggerEntry = {
   status: "partial",
-  note: "worked out once a step rather than once a frame; the screen-edge centres are not modelled",
+  note: "worked out once a frame with the screen-edge centres; group parents are not faded or tinted as one piece, and the variance table's seed is not the game's",
+};
+/** Enter Fade / Enter Tint: custom enter effects on a channel's list. */
+const ENTER_CUSTOM: TriggerEntry = {
+  status: "done",
+  note: "length, offset, dead zone, easing and the enter channel, as applyCustomEnterEffect; Move/Rotate/Scale (3017-3019) are not drawn",
 };
 
 const STATUS: ReadonlyMap<number, TriggerEntry> = new Map<number, TriggerEntry>([
@@ -95,32 +100,32 @@ const STATUS: ReadonlyMap<number, TriggerEntry> = new Map<number, TriggerEntry>(
   [915, DONE],
   [1006, DONE],
   [1007, DONE],
-  [2903, { status: "partial", note: "drawn (render/gradients.ts): a layer per key 209, its sides from the main objects of keys 203-206 (or its corners, with key 207) and the view's edges, its colour running along the trigger's turn from key 21's channel to key 22's at their opacities and the trigger's group opacity, normal / additive / multiply / invert (key 174 0-3), over its key-202 draw layer; 208 and 508 take layers away. A screen-space layer (BG, MG, G, UI, Max) turns with the view, which the game's does not" }],
+  [2903, { status: "partial", note: "drawn (render/gradients.ts): a layer per key 209, its sides from the main objects of keys 203-206 (or its corners, with key 207) and the view's edges, its colour running along the trigger's turn from key 21's channel to key 22's at their opacities and the trigger's group opacity, normal / additive / multiply / invert (key 174 0-3), over its key-202 draw layer; 208 and 508 take layers away. Screen-space layers (BG, MG, G, UI, Max) stay upright under Camera Rotate" }],
   [1520, DONE],
   [1585, DONE],
 
   // --- scheduling ---
   [1049, DONE],
   [1268, DONE],
-  [1616, { status: "partial", note: "stops, pauses or resumes what the triggers in its group started — moves, rotations, scales, follows, alphas, keyframes, pending spawns, pulses, touches and camera tweens — or what carries its control id; colour fades, counts, collisions and timers are not reached" }],
+  [1616, DONE],
   [1812, DONE],
   [1912, DONE],
   [2068, DONE],
-  [3607, { status: "partial", note: "steps its list in order; the stop and loop modes are not read" }],
+  [3607, DONE],
   [3618, DONE],
   [1595, { status: "partial", note: "every press and release switches its group as its hold, mode, player and dual keys say, and Stop pauses or ends it; a dual touch does not yet keep player 2's presses from moving player 2" }],
 
   // --- movement ---
-  [901, { status: "partial", note: "offset, target, direction, silent, dynamic aiming and the player/camera locks are in; the small-step option on key 393 is not" }],
-  [1346, { status: "partial", note: "turns about a centre group and can aim at another group, live or once; the easing selector on key 403 is ignored" }],
-  [2067, { status: "partial", note: "scales about a centre group; the game re-derives each object's own skew, which this does not" }],
-  [1347, { status: "partial", note: "copies its main object's movement from any cause; the game measures that from a float copy of the position, so a follower of an object a float cannot place exactly creeps a little every step, which this does not" }],
+  [901, DONE],
+  [1346, DONE],
+  [2067, DONE],
+  [1347, DONE],
   [1814, DONE],
-  [3022, { status: "partial", note: "to its group's object as it stands now, with keep-x/y, gravity, the push along the exit and the camera keys (55, 464, 510); the force and dash redirects (keys 347-350, 591) are not built" }],
-  [3033, { status: "partial", note: "runs the keyframes' path with their easing, curves, time modes, spins, scales, close loop and spawns, and the trigger's mods; a scale is not turned with a rotated group, and a newer rotation does not take over an older one's group" }],
+  [3022, DONE],
+  [3033, DONE],
   [3016, {
     status: "partial",
-    note: "modes 0–2 per-object velocity steering; delayed position history and enter-effect group copies are not built",
+    note: "modes 0–2 per-object velocity steering with delayed position history and enter-effect group-copy passes; enter-effect copies themselves are only moved when the runtime has registered them",
   }],
   [3660, DONE],
   [3661, DONE],
@@ -138,8 +143,8 @@ const STATUS: ReadonlyMap<number, TriggerEntry> = new Map<number, TriggerEntry>(
   [3017, AREA],
   [3018, AREA],
   [3019, AREA],
-  [3020, AREA],
-  [3021, AREA],
+  [3020, ENTER_CUSTOM],
+  [3021, ENTER_CUSTOM],
   [3023, AREA],
 
   // --- items and counters ---
@@ -168,7 +173,7 @@ const STATUS: ReadonlyMap<number, TriggerEntry> = new Map<number, TriggerEntry>(
   [2901, DONE],
 
   // --- gameplay ---
-  [3600, { status: "partial", note: "ends the level where it is passed, touched or spawned, once; the one-second flight to the end point and the end effects are not drawn, the end screen comes at once" }],
+  [3600, DONE],
   [1931, { status: "unsupported", note: "the old End trigger: the game's play layer ignores it in 2.206, its handler is empty" }],
   [1612, DONE],
   [1613, DONE],
@@ -176,19 +181,19 @@ const STATUS: ReadonlyMap<number, TriggerEntry> = new Map<number, TriggerEntry>(
   [1932, DONE],
   [1935, DONE],
   [2066, DONE],
-  [2899, { status: "partial", note: "all fourteen settings are read as the tri-states they are; the ones this build can act on are the ground, the two players and the controls" }],
-  [3613, { status: "partial", note: "layout at load pins the target group to the screen about the UI target with X/Y ref and aspect scale (positionUIObjects); the objects stay in the world draw list rather than a separate UI layer, and mid-level re-fire only notes the event" }],
+  [2899, DONE],
+  [3613, { status: "partial", note: "layout at load and on mid-level re-fire pins the target group to the screen about the UI target with X/Y ref and aspect scale (positionUIObjects); the objects stay in the world draw list with a per-frame screen offset rather than a separate UI layer / section removal" }],
   [3614, { status: "partial", note: "runs, stops at its target and spawns there; key 469 (ignore time warp) divides the warp back out, which the decompile does not show" }],
   [3615, DONE],
   [3617, DONE],
-  [3604, { status: "partial", note: "listens for game events and spawns its group; the sim raises the landings (1-5), orb and pad events (7-9, 34-49), jumps and robot boosts (12-14, 19), coin and pickup (62, 63) and buttons (69-74), every event the tower floors use, but not the portal, gravity and other events" }],
+  [3604, { status: "partial", note: "listens for game events and spawns its group; the sim raises landings, hit-head, orbs, pads, jumps, robot boosts, UFO jump, spider teleport, swing/wave/dash, fall distance and fall speed, gravity inverted/restored, mode/gravity/mirror/scale/dual/teleport portals, teleported, coin, pickup, checkpoint, checkpoint respawn and buttons; ship boost start/end are named in gameEventToString but never raised in the decompile" }],
   [3642, { status: "unsupported", note: "a beat guide for the editor; it has no effect while a level plays" }],
   [3662, { status: "partial", note: "copies one group's visibility onto another once, rather than tracking it" }],
 
   // --- scenery ---
-  [3029, { status: "partial", note: "the new background is recorded; the art is not swapped mid-level yet" }],
-  [3030, { status: "partial", note: "the new ground is recorded; the art is not swapped mid-level yet" }],
-  [3031, { status: "partial", note: "the new middleground is recorded; the art is not swapped mid-level yet" }],
+  [3029, DONE],
+  [3030, DONE],
+  [3031, DONE],
   [2999, DONE],
   [3606, DONE],
   [3612, DONE],
@@ -196,8 +201,8 @@ const STATUS: ReadonlyMap<number, TriggerEntry> = new Map<number, TriggerEntry>(
   [1819, DONE],
 
   // --- particles ---
-  [2065, { status: "partial", note: "the emitter runs with the game's fades, friction, restarts and colour options, and follows its object's place, turn and scale as its position type says, and draws in its object's layer; a respawn starts every emitter over, where the game's side of that is not traced" }],
-  [3608, { status: "partial", note: "spawns a one-shot copy of each Custom Particles object in its group at the position group, with the offsets, turn, scale and their variances; the variances use the renderer's random numbers, not the game's" }],
+  [2065, DONE],
+  [3608, DONE],
 
   // --- audio ---
   [1934, AUDIO],

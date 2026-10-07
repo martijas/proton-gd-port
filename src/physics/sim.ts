@@ -99,6 +99,7 @@ import {
   SQUEEZE_NUDGE,
   SQUEEZE_NUDGE_TRIES,
   SQUEEZE_WALL_MARGIN,
+  TICKS_PER_SECOND,
   usesYSections,
 } from "./constants";
 import {
@@ -120,7 +121,29 @@ import { buildTriggerIndex, type TriggerIndex } from "../triggers/spec";
 import { cameraTweenDone, stepCameraTween, type CameraTween } from "../triggers/easing";
 import { Camera, groundLayers } from "../render/camera";
 import { designSize } from "../ui/viewport";
-import { EVENT_ORB_ACTIVATED, EVENT_ORB_TOUCHED, EVENT_PAD_ACTIVATED, ORB_EVENTS, PAD_EVENTS } from "./gameEvents";
+import {
+  EVENT_CHECKPOINT,
+  EVENT_CHECKPOINT_RESPAWN,
+  EVENT_DASH_START,
+  EVENT_ORB_ACTIVATED,
+  EVENT_ORB_TOUCHED,
+  EVENT_PAD_ACTIVATED,
+  EVENT_PORTAL_DUAL_OFF,
+  EVENT_PORTAL_DUAL_ON,
+  EVENT_PORTAL_GRAVITY_FLIP,
+  EVENT_PORTAL_GRAVITY_INVERT,
+  EVENT_PORTAL_GRAVITY_NORMAL,
+  EVENT_PORTAL_MIRROR_OFF,
+  EVENT_PORTAL_MIRROR_ON,
+  EVENT_PORTAL_SCALE_MINI,
+  EVENT_PORTAL_SCALE_NORMAL,
+  EVENT_PORTAL_TELEPORT,
+  EVENT_SPIDER_TELEPORT,
+  EVENT_TELEPORTED,
+  MODE_PORTAL_EVENTS,
+  ORB_EVENTS,
+  PAD_EVENTS,
+} from "./gameEvents";
 import {
   AUDIO_EVENT_KINDS,
   EVENT_JUMP_PUSH,
@@ -247,6 +270,7 @@ interface SnapData {
   lastPlayerX: number;
   lastPlayerY: number;
   end: LevelEnd | null;
+  endFlight: EndFlight | null;
   /**
    * A platformer checkpoint object's (+340 on player 1's saved state): player
    * 1 was put at the respawn point, and a respawn from it lets go of player
@@ -256,6 +280,24 @@ interface SnapData {
   /** Key 448 of the platformer checkpoint this snapshot is, spawned on a respawn from it; 0 for any other. */
   respawnGroup: number;
 }
+
+/**
+ * One-second flight an End trigger (without key 487) runs before levelComplete.
+ * [gdp playPlatformerEndAnimationToPos :92922-93030]
+ */
+interface EndFlight {
+  p1FromX: number;
+  p1FromY: number;
+  p2FromX: number;
+  p2FromY: number;
+  toX: number;
+  toY: number;
+  /** Steps of the flight so far; finishes at TICKS_PER_SECOND. */
+  ticks: number;
+}
+
+/** EaseIn rate on the end flight's bezier and spin. [gdp :92994, :93010 — 0x3FE66666] */
+const END_FLIGHT_EASE = 1.8;
 
 /**
  * The corridor's two ground layers as the layer keeps them. They are placed
@@ -591,6 +633,8 @@ export class SimImpl implements Sim, PlayerWorld {
    * right edge.
    */
   end: LevelEnd | null = null;
+  /** Flight to the End trigger's point, or null when not flying / already finished. */
+  private endFlight: EndFlight | null = null;
   /** The platformer checkpoint the last step laid down, until the host takes it. */
   private checkpointMarked: SimSnapshot | null = null;
   /**
@@ -1268,6 +1312,14 @@ export class SimImpl implements Sim, PlayerWorld {
     const p1 = this.p1;
     this.waves.length = 0;
     if (p1.dead || p1.finished) return;
+    // End-trigger flight: lock the players and ease them to the end point for
+    // one second, then finish. [gdp playPlatformerEndAnimationToPos :92922-93017]
+    if (this.endFlight) {
+      this.tick++;
+      this.triggers.tick = this.tick;
+      this.advanceEndFlight();
+      return;
+    }
     this.tick++;
     const trig = this.triggers;
     trig.tick = this.tick;
@@ -1466,6 +1518,8 @@ export class SimImpl implements Sim, PlayerWorld {
       this.takeSpawned();
       this.triggers.pendingCheckpoint = -1;
     }
+    // Checkpoint, after the mark and its spawn. [gdp PlayLayer::postUpdate :105360]
+    this.triggers.gameEvent(EVENT_CHECKPOINT, 0, 0);
   }
 
   /**
@@ -1502,8 +1556,8 @@ export class SimImpl implements Sim, PlayerWorld {
   /**
    * An End trigger that fired since the last look ends the level here: the
    * game locks both players at once and completes the level at the end of
-   * their flight, or at once with key 487, and nothing the players do after
-   * the lock can change the outcome, so the sim stops with them.
+   * their one-second flight, or at once with key 487. Nothing the players do
+   * after the lock can change the outcome.
    * [gdp PlayLayer::activatePlatformerEndTrigger :93034-93065 →
    *  playPlatformerEndAnimationToPos :92922-93030 (lockPlayer :92973)]
    */
@@ -1512,8 +1566,64 @@ export class SimImpl implements Sim, PlayerWorld {
     if (!end) return false;
     this.triggers.pendingEnd = null;
     this.end = end;
-    this.finish(this.p1);
+    for (const p of this.p2 ? [this.p1, this.p2] : [this.p1]) {
+      p.releaseButton();
+      p.stopRotation();
+      p.onGround = false;
+      p.onGround2 = false;
+      if (p.dashing) p.stopDashing();
+    }
+    // Ghost trail for the flight unless key 460. [gdp :92975-92976]
+    if (end.effects) {
+      this.triggers.visual.ghostTrail = true;
+      if (this.p2) this.triggers.visual.ghostTrail2 = true;
+    }
+    // Key 487, or an End that fired while loading (warm-up / reset at tick 0):
+    // levelComplete at once. A play step has already bumped the tick, so a
+    // mid-level End still flies. [gdp playPlatformerEndAnimationToPos :93016-93017;
+    //  warm-up has no loading gate on the End trigger :93034]
+    if (end.instant || this.tick === 0) {
+      this.finish(this.p1);
+      return true;
+    }
+    this.endFlight = {
+      p1FromX: this.p1.worldX,
+      p1FromY: this.p1.worldY,
+      p2FromX: this.p2?.worldX ?? 0,
+      p2FromY: this.p2?.worldY ?? 0,
+      toX: end.x,
+      toY: end.y,
+      ticks: 0,
+    };
     return true;
+  }
+
+  /**
+   * One tick of the end flight: EaseIn(1.8) cubic bezier from each player's
+   * lock position to the end point (controls at start and midpoint) and a
+   * 360° spin, then levelComplete. [gdp :92979-93017]
+   */
+  private advanceEndFlight(): void {
+    const f = this.endFlight;
+    if (!f) return;
+    f.ticks++;
+    const t = Math.min(1, f.ticks / TICKS_PER_SECOND);
+    const eased = Math.fround(Math.pow(t, END_FLIGHT_EASE));
+    const fly = (p: Player, fromX: number, fromY: number): void => {
+      const midX = fromX + (f.toX - fromX) * 0.5;
+      const midY = fromY + (f.toY - fromY) * 0.5;
+      const u = 1 - eased;
+      const x = u * u * (1 + 2 * eased) * fromX + 3 * u * eased * eased * midX + eased * eased * eased * f.toX;
+      const y = u * u * (1 + 2 * eased) * fromY + 3 * u * eased * eased * midY + eased * eased * eased * f.toY;
+      p.setWorldPosition(x, y);
+      p.rotation = eased * 360;
+    };
+    fly(this.p1, f.p1FromX, f.p1FromY);
+    if (this.p2) fly(this.p2, f.p2FromX, f.p2FromY);
+    if (f.ticks >= TICKS_PER_SECOND) {
+      this.endFlight = null;
+      this.finish(this.p1);
+    }
   }
 
   /**
@@ -1825,7 +1935,9 @@ export class SimImpl implements Sim, PlayerWorld {
     // player hit something. [gdp PlayLayer::destroyPlayer :93151 (player 1's
     //  +2074); lockPlayer :159595, from playPlatformerEndAnimationToPos
     //  :92973]
-    if (this.triggers.pendingEnd) return false;
+    // Locked for an End trigger's flight (or one that just fired this step).
+    // [gdp PlayLayer::destroyPlayer :93151 (player 1's +2074); lockPlayer :159595]
+    if (this.triggers.pendingEnd || this.endFlight) return false;
     if (this.cheats.noclip) {
       if (this.noclipTick !== this.tick) {
         this.noclipTick = this.tick;
@@ -2317,6 +2429,8 @@ export class SimImpl implements Sim, PlayerWorld {
 
     // E. postCollision, which is where a slope is left. [:465018-465021]
     p.leaveSlope();
+    // Fall Speed events at the end of postCollision. [:159202-159231]
+    p.raiseFallSpeedEvents();
   }
 
   /**
@@ -2820,10 +2934,10 @@ export class SimImpl implements Sim, PlayerWorld {
     //  :148342-148343]
     p.doReversePlayer(this.platformer ? p.reversed : r.direction === 2 || r.direction === 3);
     if (nowRotated === wasRotated) return;
-    // A new quarter turn empties the collision log, and like a teleport
-    // forgets where the player last met the ground. [:152508, :152533 →
-    // playerTeleported :148810]
-    p.resetCollisionLog();
+    // A new quarter turn empties the collision log (and last pass's floor /
+    // ceiling sticky ids), and like a teleport forgets where the player last
+    // met the ground. [:152508, :152533 → playerTeleported :148810]
+    p.resetCollisionLog(true);
     p.lastGroundY = Number.NaN;
     // Handed over as a float point, its halves swapped, through
     // updatePlayerForce, which writes the doubles directly: not rounded to
@@ -3023,7 +3137,12 @@ export class SimImpl implements Sim, PlayerWorld {
         } else {
           p.setY(ceilingLine);
           if (head) p.pushDown();
-          else if (p.yVel > 0) p.hitGround(-1, !p.flipped);
+          else if (p.yVel > 0) {
+            // Band ceiling while rising: Hit Head, then hitGround.
+            // [gdp checkCollisions :464774-464813; hit head :152123-152129]
+            p.raiseHitHead(-1);
+            p.hitGround(-1, !p.flipped);
+          }
           const edge = p.y + p.hitboxSize() * 0.5;
           if (p.flipped) p.updateCollideBottom(edge);
           else p.updateCollideTop(edge);
@@ -3105,6 +3224,10 @@ export class SimImpl implements Sim, PlayerWorld {
       //  :463553-463558]
       this.meet(p, i);
       this.matchDualGravity(p, mode);
+      // Mode portal Event, as playerWillSwitchMode raises before the switch.
+      // [gdp playerWillSwitchMode :462528-462530; gameEventToString 26-33]
+      const modeEvent = MODE_PORTAL_EVENTS[mode] ?? 0;
+      if (modeEvent !== 0) this.triggers.gameEvent(modeEvent, 0, p.playerNo);
       if (p.mode !== mode) {
         p.setMode(mode);
         this.modeWaves(p, i, mode);
@@ -3147,14 +3270,17 @@ export class SimImpl implements Sim, PlayerWorld {
     switch (code) {
       case P_GRAV_NORMAL:
         this.gravityPortal(p, i, false);
+        this.triggers.gameEvent(EVENT_PORTAL_GRAVITY_NORMAL, 0, p.playerNo);
         this.emit("portal", p.playerNo, i, "gravityNormal");
         break;
       case P_GRAV_FLIP:
         this.gravityPortal(p, i, true);
+        this.triggers.gameEvent(EVENT_PORTAL_GRAVITY_FLIP, 0, p.playerNo);
         this.emit("portal", p.playerNo, i, "gravityFlip");
         break;
       case P_GRAV_TOGGLE:
         this.gravityPortal(p, i, !p.flipped);
+        this.triggers.gameEvent(EVENT_PORTAL_GRAVITY_INVERT, 0, p.playerNo);
         this.emit("portal", p.playerNo, i, "gravityToggle");
         break;
       case P_MIRROR_ON:
@@ -3171,6 +3297,7 @@ export class SimImpl implements Sim, PlayerWorld {
         this.p1.mirrored = mirrored;
         if (this.p2) this.p2.mirrored = mirrored;
         if (mirrored !== was && (this.effectBits(i) & EFFECT_NONE) === 0) this.portalWave(this.p1, mirrored ? "mirrorOn" : "mirrorOff");
+        this.triggers.gameEvent(mirrored ? EVENT_PORTAL_MIRROR_ON : EVENT_PORTAL_MIRROR_OFF, 0, p.playerNo);
         this.emit("portal", p.playerNo, i, mirrored ? "mirrorOn" : "mirrorOff");
         break;
       }
@@ -3188,6 +3315,7 @@ export class SimImpl implements Sim, PlayerWorld {
           this.portalWave(p, mini ? "mini" : "normal");
           this.wave("scale", p, -1, mini ? "mini" : "normal");
         }
+        this.triggers.gameEvent(mini ? EVENT_PORTAL_SCALE_MINI : EVENT_PORTAL_SCALE_NORMAL, 0, p.playerNo);
         this.emit("portal", p.playerNo, i, mini ? "mini" : "normal");
         break;
       }
@@ -3202,6 +3330,7 @@ export class SimImpl implements Sim, PlayerWorld {
           this.wave("dual", this.p1, -1, "");
           if (this.p2) this.wave("dual", this.p2, -1, "");
         }
+        this.triggers.gameEvent(EVENT_PORTAL_DUAL_ON, 0, p.playerNo);
         this.emit("portal", p.playerNo, i, "dual");
         break;
       case P_DUAL_OFF:
@@ -3219,13 +3348,16 @@ export class SimImpl implements Sim, PlayerWorld {
           this.exitDual(p);
           this.portalWave(this.p1, "solo");
         }
+        this.triggers.gameEvent(EVENT_PORTAL_DUAL_OFF, 0, p.playerNo);
         this.emit("portal", p.playerNo, i, "solo");
         break;
       case P_TP_LINKED_ENTRY:
+        this.triggers.gameEvent(EVENT_PORTAL_TELEPORT, 0, p.playerNo);
         this.teleportPlayer(p, i, LINKED_EXIT);
         this.emit("portal", p.playerNo, i, "teleport");
         break;
       case P_TP_TARGET_ENTRY:
+        this.triggers.gameEvent(EVENT_PORTAL_TELEPORT, 0, p.playerNo);
         this.teleportPlayer(p, i, this.triggers.portalTarget(o.param2[i]));
         this.emit("portal", p.playerNo, i, "teleport");
         break;
@@ -3293,8 +3425,7 @@ export class SimImpl implements Sim, PlayerWorld {
    * 3 the other way) on this player alone, and key 345 hands it a push of
    * key 346 along the way the exit faces; with no key 346 and no key 443
    * that push is a stop. Key 347 redirects the player's force in place of
-   * that push; the redirect (347-350) and the dash redirect (591) are not
-   * built, and no official level uses them.
+   * that push (keys 348-350 scale and clamp); key 591 redirects an active dash.
    *
    * Then the camera. Key 55 slows its y follow for half a second, and key
    * 464 snaps both its axes on its next step; both act with a target or
@@ -3368,12 +3499,26 @@ export class SimImpl implements Sim, PlayerWorld {
       if (effects) this.portalWave(p, "teleportOut");
     }
     if (target !== -1) this.afterTeleport(p);
-    if (!on(347) && on(345)) p.updateStaticForce(facing, Math.fround(Number(props[346] ?? 0) || 0), on(443));
+    // Key 347 redirects the current velocity; else key 345's push. Key 591
+    // redirects an active dash. [gdp teleportPlayer :462467-462487]
+    if (on(347)) {
+      p.redirectPlayerForce(
+        facing,
+        Math.fround(Number(props[350] ?? 0) || 0),
+        Math.fround(Number(props[348] ?? 0) || 0),
+        Math.fround(Number(props[349] ?? 0) || 0),
+      );
+    } else if (on(345)) {
+      p.updateStaticForce(facing, Math.fround(Number(props[346] ?? 0) || 0), on(443));
+    }
     const cam = this.triggers.camera;
     if (on(55)) cam.slowYSeq++;
     if (on(464)) cam.snapSeq++;
     if (on(510)) p.lastGroundY = p.worldY;
+    if (p.dashing && on(591)) p.redirectDash(facing);
     if (target !== -1) this.checkCameraAfterTeleport(p, on(55) ? TELEPORT_CAMERA_MARGIN_SLOW : TELEPORT_CAMERA_MARGIN);
+    // Teleported, after the move. [gdp teleportPlayer :462490]
+    this.triggers.gameEvent(EVENT_TELEPORTED, 0, p.playerNo);
   }
 
   /**
@@ -3405,6 +3550,8 @@ export class SimImpl implements Sim, PlayerWorld {
   private afterTeleport(p: Player): void {
     p.onGround2 = false;
     p.lastGroundY = Number.NaN;
+    // A teleport clears the fall-start marker. [gdp teleportPlayer :462334]
+    p.fallStartY = 0;
     this.clearTouchBits(p);
   }
 
@@ -3509,6 +3656,10 @@ export class SimImpl implements Sim, PlayerWorld {
     this.dual = false;
     this.dualPortal = null;
     this.p2 = null;
+    // Drop player 2's Ghost Trail with the player; setAreaPlayers at the start
+    // of the next step would do the same a frame late.
+    // [PlayLayer::toggleGhostEffect :92269-92276]
+    this.triggers.setAreaPlayers(this.p1.worldX, this.p1.worldY, null);
     this.updateCorridor(p, this.p1.mode);
     this.hashDirty = true;
   }
@@ -3763,6 +3914,8 @@ export class SimImpl implements Sim, PlayerWorld {
     else this.classicDash(p, i);
     p.updateDashArt();
     this.emit("dashStart", p.playerNo, i);
+    // Dash Start. [gdp startDashing :148787-148789]
+    this.gameEvent(EVENT_DASH_START, p.playerNo);
   }
 
   /**
@@ -4009,6 +4162,8 @@ export class SimImpl implements Sim, PlayerWorld {
     // playSpiderDashEffect, from where the jump began to where it landed. [:155221-155224]
     this.wave("spiderDash", p, -1, p.reversed ? "reversed" : "", fromX, fromY, p.worldX, p.worldY);
     this.emit("jump", p.playerNo, landObj >= 0 ? landObj : undefined, "spider");
+    // Spider Teleport, after the jump. [gdp spiderTestJump :155259-155261]
+    this.gameEvent(EVENT_SPIDER_TELEPORT, p.playerNo);
     // A jump that looked past the band has the camera check where it landed,
     // as a teleport does; inside a band the camera already shows it.
     // [:155225-155230]
@@ -4157,6 +4312,7 @@ export class SimImpl implements Sim, PlayerWorld {
       lastPlayerX: this.lastPlayerX,
       lastPlayerY: this.lastPlayerY,
       end: this.end,
+      endFlight: this.endFlight ? { ...this.endFlight } : null,
       placed: false,
       respawnGroup: 0,
     };
@@ -4190,6 +4346,7 @@ export class SimImpl implements Sim, PlayerWorld {
     this.lastPlayerX = d.lastPlayerX;
     this.lastPlayerY = d.lastPlayerY;
     this.end = d.end;
+    this.endFlight = d.endFlight ? { ...d.endFlight } : null;
     this.checkpointMarked = null;
     this.pendingSpeed = -1;
     this.syncGeometry(false);
@@ -4231,6 +4388,8 @@ export class SimImpl implements Sim, PlayerWorld {
     const levelTime = this.triggers.levelTime;
     this.restore(s);
     this.triggers.respawned(levelTime);
+    // Checkpoint Respawn. [gdp PlayLayer::resetLevel :105975]
+    this.triggers.gameEvent(EVENT_CHECKPOINT_RESPAWN, 0, 0);
     const d = s.opaque as SnapData;
     const kept = this.triggers.events.length;
     for (const p of [this.p1, this.p2]) {

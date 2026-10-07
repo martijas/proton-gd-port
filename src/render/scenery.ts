@@ -248,28 +248,40 @@ export class SceneryRenderer {
 
   /** Uploads the three images this level needs. Cheap: they are one PNG each. */
   async setLevel(scenery: Scenery, header: LevelHeader): Promise<(WebGLTexture | null)[]> {
-    const ppu = scenery.pxPerUnit;
-    const make = async (entry: SceneryImage | undefined, unit: number): Promise<Tile | null> => {
-      if (!entry) return null;
-      const image = await scenery.image(entry);
-      return {
-        texture: uploadTexture(this.gl, image, { wrap: this.gl.REPEAT }),
-        unit,
-        width: entry.w / ppu,
-        height: entry.h / ppu,
-      };
-    };
-    const bg = scenery.background(header.background);
-    const gnd = scenery.ground(header.ground);
-    this.background = await make(bg, SHEET_BACKGROUND);
-    this.backgroundMirrors = !backgroundRepeats(header.background);
-    this.ground = await make(gnd?.base, SHEET_GROUND);
-    this.groundDetail = await make(gnd?.detail, SHEET_GROUND_DETAIL);
+    await this.setBackground(scenery, header.background);
+    await this.setGround(scenery, header.ground);
     const out: (WebGLTexture | null)[] = [];
     out[SHEET_BACKGROUND] = this.background?.texture ?? null;
     out[SHEET_GROUND] = this.ground?.texture ?? null;
     out[SHEET_GROUND_DETAIL] = this.groundDetail?.texture ?? null;
     return out;
+  }
+
+  /** Swap the background mid-level (Change Background, 3029). */
+  async setBackground(scenery: Scenery, index: number): Promise<WebGLTexture | null> {
+    const entry = scenery.background(index);
+    this.background = await this.makeTile(scenery, entry, SHEET_BACKGROUND);
+    this.backgroundMirrors = !backgroundRepeats(index);
+    return this.background?.texture ?? null;
+  }
+
+  /** Swap the ground mid-level (Change Ground, 3030). */
+  async setGround(scenery: Scenery, index: number): Promise<{ base: WebGLTexture | null; detail: WebGLTexture | null }> {
+    const gnd = scenery.ground(index);
+    this.ground = await this.makeTile(scenery, gnd?.base, SHEET_GROUND);
+    this.groundDetail = await this.makeTile(scenery, gnd?.detail, SHEET_GROUND_DETAIL);
+    return { base: this.ground?.texture ?? null, detail: this.groundDetail?.texture ?? null };
+  }
+
+  private async makeTile(scenery: Scenery, entry: SceneryImage | undefined, unit: number): Promise<Tile | null> {
+    if (!entry) return null;
+    const image = await scenery.image(entry);
+    return {
+      texture: uploadTexture(this.gl, image, { wrap: this.gl.REPEAT }),
+      unit,
+      width: entry.w / scenery.pxPerUnit,
+      height: entry.h / scenery.pxPerUnit,
+    };
   }
 
   /**

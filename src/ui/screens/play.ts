@@ -208,7 +208,14 @@ export class PlayScreen implements Screen {
       // [gdp PlayLayer::destroyPlayer :93302-93352]
       const auto = this.game.save.get().settings.autoRetry;
       const mods = this.game.mods;
-      this.retryDelay = mods.on("respawnTime") ? mods.value("respawnTime") : AUTO_RETRY_SECONDS;
+      // Mods override; else an Options trigger's edit (key 573/574), else 1 s.
+      // [gdp processOptionsTrigger :429863-429882; PlayLayer +1040]
+      const opt = sim.triggers?.visual.options;
+      this.retryDelay = mods.on("respawnTime")
+        ? mods.value("respawnTime")
+        : opt?.editRespawnTime
+          ? opt.respawnTime
+          : AUTO_RETRY_SECONDS;
       this.orbsPending = false;
       if (orbs > 0 || (auto && newBest)) {
         this.showNewBest(newBest, kept99, orbs, auto);
@@ -265,7 +272,7 @@ export class PlayScreen implements Screen {
     scene.viewPoint(run.attemptLabel.x, run.attemptLabel.y, at);
     const sx = at[0] * w;
     const sy = at[1] * h;
-    if (sx > -200 && sx < w + 200 && !mods.on("hideAttempts")) {
+    if (sx > -200 && sx < w + 200 && !mods.on("hideAttempts") && !sim.triggers?.visual.options.hideAttempts) {
       const scale = scene.camera.zoomAt(scene.drawnAlpha);
       out.push(label(art, `Attempt ${run.attempt}`, sx, sy, { scale, alpha: sim.startPosition >= 0 ? TEST_LABEL_ALPHA : undefined }));
     }

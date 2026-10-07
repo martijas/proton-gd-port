@@ -8,7 +8,7 @@
 // level exactly as its header describes it.
 
 import { GlContext } from "../engine/gl/context";
-import { SpriteBatch, MAX_SHEETS, SHEET_PLAYER, SHEET_PLAYER_2, UPLOAD_UNIT } from "../engine/gl/spriteBatch";
+import { SpriteBatch, MAX_SHEETS, SHEET_BACKGROUND, SHEET_GROUND, SHEET_GROUND_DETAIL, SHEET_PLAYER, SHEET_PLAYER_2, UPLOAD_UNIT } from "../engine/gl/spriteBatch";
 import { AnimSet, type AnimEntity } from "../assets/anims";
 import { IconSet } from "../assets/icons";
 import { PlayerRenderer } from "./player";
@@ -27,7 +27,7 @@ import { GRADIENT_SLOT, GradientPainter } from "./gradients";
 import { applyHsv, CHANNEL, ColorTable, describeChannel, playerChannelColours, type Rgb } from "./colors";
 import { DrawList, linkedExitOffset, objectChannels, type DrawListStats, type LiveScene } from "./drawList";
 import { batchZ, drawLayerRuns, drawParticleRuns, parentMode, type CountedRuns } from "./batchNodes";
-import { CircleWaves, shownOpacity, spawnEffectWaves, wavesFor, type WaveContext, type WaveScene } from "./circleWaves";
+import { CircleWaves, completeEffectWaves, shownOpacity, spawnEffectWaves, wavesFor, type WaveContext, type WaveScene } from "./circleWaves";
 import { ShaderBand, bandUniforms, newBandUniforms, type BandScene } from "./post";
 import {
   effectiveZLayer,
@@ -145,6 +145,8 @@ export class Scene {
   };
   /** The circles alive in the level (circleWaves.ts). */
   private readonly waves = new CircleWaves();
+  /** Whether this finish has already made its level-complete circles. */
+  private completeWavesMade = false;
   /**
    * The corner of the view (+852) and the zoom (+328) the last tick's step
    * ran under, before the tick's follow moved the camera on: where the game
@@ -489,12 +491,59 @@ export class Scene {
       this.scenery.setLine(groundLineFor(level.header.groundLine, atlas));
       // kA25 picks the middleground; it shares the scratch unit, so nothing
       // may assume its binding survives a frame and each pass rebinds it.
-      await this.scenery.setMiddleground(this.sceneryFile, Number(level.header.raw.kA25 ?? 0), UPLOAD_UNIT);
+      const mg = Number(level.header.raw.kA25 ?? 0);
+      await this.scenery.setMiddleground(this.sceneryFile, mg, UPLOAD_UNIT);
       const extra = await this.scenery.setLevel(this.sceneryFile, level.header);
       for (let i = 0; i < extra.length; i++) if (extra[i] !== undefined) this.textures[i] = extra[i];
       this.batch?.bindSheets(this.textures);
+      this.sceneryBackground = level.header.background;
+      this.sceneryGround = level.header.ground;
+      this.sceneryMiddleground = mg;
+      this.sceneryBgGen++;
+      this.sceneryGndGen++;
+      this.sceneryMgGen++;
     }
     return this.list.stats;
+  }
+
+  /**
+   * Change Background / Ground / Middleground (3029–3031): swap the scenery
+   * textures when the trigger runtime's recorded indices move.
+   */
+  private syncSceneryArt(): void {
+    const v = this.live?.triggers.visual;
+    const scenery = this.scenery;
+    const file = this.sceneryFile;
+    if (!v || !scenery || !file) return;
+    if (v.background !== this.sceneryBackground) {
+      const want = v.background;
+      this.sceneryBackground = want;
+      const gen = ++this.sceneryBgGen;
+      void scenery.setBackground(file, want).then((tex) => {
+        if (gen !== this.sceneryBgGen) return;
+        this.textures[SHEET_BACKGROUND] = tex;
+        this.batch?.bindSheets(this.textures);
+      });
+    }
+    if (v.ground !== this.sceneryGround) {
+      const want = v.ground;
+      this.sceneryGround = want;
+      const gen = ++this.sceneryGndGen;
+      void scenery.setGround(file, want).then(({ base, detail }) => {
+        if (gen !== this.sceneryGndGen) return;
+        this.textures[SHEET_GROUND] = base;
+        this.textures[SHEET_GROUND_DETAIL] = detail;
+        this.batch?.bindSheets(this.textures);
+      });
+    }
+    if (v.middleground !== this.sceneryMiddleground) {
+      const want = v.middleground;
+      this.sceneryMiddleground = want;
+      const gen = ++this.sceneryMgGen;
+      void scenery.setMiddleground(file, want, UPLOAD_UNIT).then(() => {
+        if (gen !== this.sceneryMgGen) return;
+      });
+    }
   }
 
   /**
@@ -545,7 +594,26 @@ export class Scene {
         for (const made of wavesFor(w, ctx)) this.waves.add(made);
       }
     }
+    this.spawnCompleteWaves(sim);
     this.spawnTriggerParticles(sim);
+    this.syncSceneryArt();
+  }
+
+  /**
+   * The level-complete circles, once, when the run finishes and its End
+   * trigger (if any) did not set key 460. [gdp PlayLayer::levelComplete
+   *  :92891-92904 → showCompleteEffect; EndTrigger key 460]
+   */
+  private spawnCompleteWaves(sim: Sim): void {
+    if (!sim.state.finished || this.completeWavesMade) return;
+    if (sim.end && !sim.end.effects) return;
+    this.completeWavesMade = true;
+    const ctx = this.waveContext(sim);
+    const endX = sim.end?.x ?? sim.state.x;
+    const endY = sim.end?.y ?? sim.state.y;
+    const players: { which: 1 | 2; x: number; y: number }[] = [{ which: 1, x: sim.state.x, y: sim.state.y }];
+    if (sim.state2) players.push({ which: 2, x: sim.state2.x, y: sim.state2.y });
+    for (const made of completeEffectWaves(endX, endY, players, ctx)) this.waves.add(made);
   }
 
   /** How many of the trigger events the Spawn Particle pass has seen. */
@@ -560,8 +628,11 @@ export class Scene {
    * Particles object in the particle group is spawned where it sits relative
    * to its group's main object, turned and scaled about the place with it,
    * or at the place itself when the group has no main object.
-   * [gdp GJBaseGameLayer::spawnParticleTrigger :431433-431494, then
-   *  :431315-431416]
+   *
+   * The variances use an unseeded signed uniform, as the game does: it calls
+   * C `rand()` with the cocos `(r+r)*4.6566e-10 - 1` form, not the attempt's
+   * `GameToolbox::fast_rand`. [gdp GJBaseGameLayer::spawnParticleTrigger
+   *  :431433-431494, then :431315-431416]
    */
   private spawnTriggerParticles(sim: Sim): void {
     const events = sim.triggers.events;
@@ -728,10 +799,11 @@ export class Scene {
       } else if (!band.empty) {
         band.track({ x: 0, y: 0, laying: false, reversed: false }, seconds, view, 1, additive, own);
       }
-      const ghost: GhostPlayer | null = p && visual.ghostTrail
+      const ghostOn = i === 0 ? visual.ghostTrail : visual.ghostTrail2;
+      const ghost: GhostPlayer | null = p && ghostOn
         ? { x: p.x, y: p.y, rotation: p.rotated ? p.rotation - 90 : p.rotation, mode: p.mode, scale: p.mini ? MINI_SCALE : 1, dead: p.dead, icon: own, strong: playerChannelColours(own, other).p1 }
         : null;
-      this.ghosts.step(i as 0 | 1, visual.ghostTrail, ghost, 1 / TICK_RATE, seconds, this.player);
+      this.ghosts.step(i as 0 | 1, ghostOn, ghost, 1 / TICK_RATE, seconds, this.player);
     }
   }
 
@@ -743,6 +815,7 @@ export class Scene {
   resetInterpolation(): void {
     this.prevPose.has = false;
     this.afterlife = 0;
+    this.completeWavesMade = false;
     for (const band of this.bands) band.reset();
     for (const trail of this.trails) trail.reset();
     this.ghosts.reset();
@@ -936,6 +1009,7 @@ export class Scene {
     width: 1,
     height: 1,
     zoom: 1,
+    angle: 0,
     colourOf: (channel) => (this.colors ? this.colors.get(channel) : { r: 255, g: 255, b: 255, blending: false }),
     targetOnScreen: (target, out) => this.targetOnScreen(target, out),
   };
@@ -943,6 +1017,14 @@ export class Scene {
   /** Where the background and the middleground have got to on the screen (BackdropDrift). */
   private readonly backgroundDrift = new BackdropDrift();
   private readonly middlegroundDrift = new BackdropDrift();
+  /** Last Change Background / Ground / MG indices applied to the scenery textures. */
+  private sceneryBackground = -1;
+  private sceneryGround = -1;
+  private sceneryMiddleground = -1;
+  /** Per-channel gens so overlapping swaps do not cancel each other. */
+  private sceneryBgGen = 0;
+  private sceneryGndGen = 0;
+  private sceneryMgGen = 0;
 
   /** The Gradient triggers' layers this frame, placed for the view; drawn by drawPart after their parts. */
   private readonly gradients = new GradientPainter();
@@ -956,7 +1038,20 @@ export class Scene {
       return;
     }
     const v = this.camera.bounds(0, alpha);
-    this.gradients.update(live.triggers.visual.gradients, { level, triggers: live.triggers, colors: this.colors, view: v }, white);
+    // Turn centre must match beginFrame (includes shake), or the inverse
+    // rotation for screen-space layers misses the batch's pivot.
+    this.gradients.update(
+      live.triggers.visual.gradients,
+      {
+        level,
+        triggers: live.triggers,
+        colors: this.colors,
+        view: v,
+        turn: this.frameTurn,
+        centre: { x: this.frameCentreX, y: this.frameCentreY },
+      },
+      white,
+    );
   }
 
   /** The gradients whose layer draws after slot `slot` (GRADIENT_SLOT). */
@@ -986,9 +1081,9 @@ export class Scene {
         return;
       case SCENE_PART.STREAK:
         // The streak at −3, then what of B1 lies over it: the objects' own
-        // particle systems (−2 to 4) and B1's gradients (38, give or take
-        // their z order). No band edge falls between −3 and 38, so they
-        // always go together.
+        // particle systems (−2 to 4) and B1's gradients whose node z is still
+        // under the player's particles (z order ≤ 0 → ≤ 38). Gradients at
+        // z ≥ 39 wait for after PARTICLES_UNDER (B1_OVER_PARTICLES).
         // [GJBaseGameLayer::claimParticle :431656-431700; triggerGradientCommand
         //  :436394-436486 (added to the object layer, the containers' parent,
         //  at maxZOrderForShaderZ plus its z order held to ±5)]
@@ -998,6 +1093,8 @@ export class Scene {
         return;
       case SCENE_PART.PARTICLES_UNDER:
         batch.draw(this.playerParticles.data, this.frameUnder);
+        // B1 gradients with z order ≥ 1 sit at ≥ 39, over these particles.
+        this.drawGradients(GRADIENT_SLOT.B1_OVER_PARTICLES);
         return;
       case SCENE_PART.PLAYER:
         // The Ghost Trail's copies at 58, then the player at 59. No band edge
@@ -1086,6 +1183,7 @@ export class Scene {
     bs.width = size.width;
     bs.height = size.height;
     bs.zoom = this.camera.zoomAt(this.frameAlpha);
+    bs.angle = this.frameTurn;
     band.composite(bandUniforms(st, bs, this.uniforms), st.layerMin <= 1);
     this.batch.resume();
     // The composite took the scratch unit, which the second font page may
@@ -1094,10 +1192,12 @@ export class Scene {
   }
 
   /**
-   * Where a shader target is on screen, 0..1 from the bottom left: player 1
-   * for -1, player 2 for -2 (player 1 when there is none), a group's main
-   * object for a group. [GJBaseGameLayer::positionForShaderTarget
-   * :424325-424361]
+   * Where a shader target is on screen with the view unturned, 0..1 from the
+   * bottom left: player 1 for -1, player 2 for -2 (player 1 when there is
+   * none), a group's main object for a group. The band turns that point about
+   * the screen middle by the camera's angle. [GJBaseGameLayer::
+   * positionForShaderTarget :424325-424361; updateEffectOffsets rotatePoint
+   * :656738-656756]
    */
   private targetOnScreen(target: number, out: [number, number]): boolean {
     const sim = this.sim;
@@ -1116,7 +1216,8 @@ export class Scene {
     } else {
       return false;
     }
-    this.viewPoint(x, y, out);
+    out[0] = (x - this.frameCentreX) / this.camera.unitsWideAt(this.frameAlpha) + 0.5;
+    out[1] = (y - this.frameCentreY) / this.camera.unitsHighAt(this.frameAlpha) + 0.5;
     return true;
   }
 

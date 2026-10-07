@@ -11,11 +11,13 @@
 // frames; where the two families are one (1592), the colour slot decides. The
 // few ids whose frames reach their sprites some other way — the wave strips'
 // mirrored frames, the small coin's four sheets, 1592's colour playing back
-// and forth, lava's three plays — are written out below by id.
+// and forth, lava's three plays, the scale-fade rings, and the 16-step spins —
+// are written out below by id.
 // [EnhancedGameObject::updateSyncedAnimation, gd-ida-decomp.cpp:620683-621700:
 //  the default path LABEL_303, the colour on the colour sprite's first child
 //  LABEL_294 (gj22, fire), the wave strips :621205-621287, 1592 :621319-621339,
-//  1614 :621568-621640, lava :621340-621440]
+//  1614 :621568-621640, lava :621340-621440, rings :621486-621565,
+//  2892/2893 :620889-620948]
 //
 // When: updateSyncedAnimation is a function of the level time and a few numbers
 // the object settles at load — its speed, keys 107, 122, 123, 126, 462 and
@@ -24,9 +26,11 @@
 // not reach play: the reset before the first frame, and every restart and
 // respawn, clears them (animTimingFor).
 //
-// Not transcribed: the special animations of 1839-1842 (scale and opacity of
-// the ring children) and 2892 and 2893 (a 16-step spin of the colour child).
-// Those hold their resting frame.
+// Special animations that are not a plain frame walk: 1839-1842 scale and fade
+// their ring children, and 2892/2893 walk a 16-step spin that picks a frame
+// and a turn for the main and colour sprites.
+// [usesSpecialAnimation :621938-621945; 1839-1842 :621486-621565;
+//  2892/2893 :620889-620948]
 
 import type { LevelObject } from "../level/types";
 import { GAME_ANIMATIONS, type GameAnimation } from "../assets/gameAnimations";
@@ -37,6 +41,12 @@ import { animFrame, type AnimEntity, type AnimPart } from "../assets/anims";
 export interface AnimFrame {
   f: string;
   flip: boolean;
+  /** Scale about the sprite's anim origin (centre, or an anchored child's position). */
+  scale?: number;
+  /** Degrees clockwise about the same origin. */
+  rot?: number;
+  /** Opacity multiplier; absent means opaque. */
+  alpha?: number;
 }
 
 /** One of lava's plays: where its frames start in the book, how many, how long each. */
@@ -62,16 +72,58 @@ export interface ObjectAnimation {
   framesFor(resting: string, detail: boolean): readonly AnimFrame[] | null;
 }
 
-/** Ids whose special animation is not transcribed: they hold their resting frame. [usesSpecialAnimation :621886-621895; 1839-1842 :621486-621565; 2892/2893 :620889-620948] */
-const UNPORTED_SPECIAL: ReadonlySet<number> = new Set([1839, 1840, 1841, 1842, 2892, 2893]);
 const LAVA_IDS: ReadonlySet<number> = new Set([1591, 1593]);
 /** The animations lava plays, by its state: 1 is the surface, 2 and 3 the two bubbles. [:621381-621392] */
 const LAVA_PLAYS = [2058, 2059, 2060] as const;
 /** 1697 picks a random frame each step rather than walking the cycle. [:621459-621482] */
 const RANDOM_FRAME_ID = 1697;
+/** Scale-fade rings: special animation drives children, not a frame family. [:621486-621565] */
+const RING_IDS: ReadonlySet<number> = new Set([1839, 1840, 1841, 1842]);
+/** 16-step spin of the main and colour sprites. [:620889-620948] */
+const SPIN16_IDS: ReadonlySet<number> = new Set([2892, 2893]);
 
 const FRAME_SUFFIX = /_\d{3}\.png$/;
 const pad3 = (n: number): string => String(n).padStart(3, "0");
+
+/** Whether this id's special animation scales and fades its ring children. */
+export function isRingAnimation(id: number): boolean {
+  return RING_IDS.has(id);
+}
+
+/** Whether this id's special animation is the 16-step spin (main sprite is never drawn). */
+export function isSpin16Animation(id: number): boolean {
+  return SPIN16_IDS.has(id);
+}
+
+/**
+ * One step of a ring's pulse: scale and opacity for a 1-based step in a cycle
+ * of `steps`. [updateSyncedAnimation :621505-621538]
+ */
+export function ringPose(step: number, steps: number): { scale: number; alpha: number } {
+  if (step === steps) return { scale: 1, alpha: 0 };
+  const third = (steps / 3) | 0;
+  let u = (2 * step) / steps;
+  let scale: number;
+  if (u < 1) {
+    scale = 0.7 * u * u + 0.1;
+  } else {
+    u -= 1;
+    const v101 = u * (u - 2) - 0.7;
+    scale = v101 * -0.7 + 0.1;
+  }
+  let opacity: number;
+  if (step < third) opacity = 255;
+  else opacity = Math.trunc(255 / (third - steps)) * (step - third) + 255;
+  return { scale, alpha: Math.min(255, Math.max(0, opacity)) / 255 };
+}
+
+/** Ring-child frames for a cycle of `steps`, all on the same resting texture. */
+export function ringChildFrames(resting: string, steps: number): AnimFrame[] {
+  return Array.from({ length: steps }, (_, i) => {
+    const pose = ringPose(i + 1, steps);
+    return { f: resting, flip: false, scale: pose.scale, alpha: pose.alpha };
+  });
+}
 
 /** A frame's family: its name without the `_NNN.png`. */
 function familyOf(frame: string): string {
@@ -117,9 +169,54 @@ const SMALL_COIN = 1614;
  * the sprites that would have played it hold still.
  */
 export function objectAnimationFor(id: number, exists: (frame: string) => boolean): ObjectAnimation | null {
-  if (UNPORTED_SPECIAL.has(id)) return null;
   const valid = (list: AnimFrame[] | null): AnimFrame[] | null => (list && list.every((a) => exists(a.f)) ? list : null);
   if (LAVA_IDS.has(id)) return lavaAnimation(valid);
+  if (RING_IDS.has(id)) {
+    // Scale and opacity of the ring children; the empty main sprite holds still.
+    // Step count follows speed in animTimingFor. [updateSyncedAnimation :621486-621565]
+    return {
+      frames: 40,
+      time: 0.02,
+      lava: null,
+      framesFor(resting: string): readonly AnimFrame[] | null {
+        if (familyOf(resting) !== "d_scaleFadeRing_01") return null;
+        return valid(ringChildFrames(resting, 40));
+      },
+    };
+  }
+  if (SPIN16_IDS.has(id)) {
+    // Sixteen steps: a frame from the 2- or 4-frame family and a turn on both
+    // the main (tag-1) and colour sprites. [updateSyncedAnimation :620889-620948]
+    const entry = GAME_ANIMATIONS.get(id);
+    if (!entry || !entry.color) return null;
+    const mods = id === 2892 ? 2 : 4;
+    const spin = (stem: string): AnimFrame[] =>
+      Array.from({ length: 16 }, (_, i) => {
+        const step = i + 1;
+        const frame = (step % mods) + 1;
+        // `* -90` yields -0 for the first quarter; normalise so tests and
+        // matrix math see plain 0.
+        const rot = (id === 2892 ? Math.trunc(-22.5 * step) : Math.trunc(Math.floor(step * 0.25) * -90)) || 0;
+        return { f: `${stem}_${pad3(frame)}.png`, flip: false, rot };
+      });
+    const main = valid(spin(entry.name));
+    const colour = valid(spin(entry.color));
+    if (!main || !colour) return null;
+    const name = entry.name;
+    const color = entry.color;
+    return {
+      frames: 16,
+      time: id === 2892 ? 0.025 : 0.033333,
+      lava: null,
+      framesFor(resting: string, detail: boolean): readonly AnimFrame[] | null {
+        const family = familyOf(resting);
+        if (family === name && family === color) return detail ? colour : main;
+        if (family === name) return main;
+        if (family === color) return colour;
+        return null;
+      },
+    };
+  }
   const entry = GAME_ANIMATIONS.get(id);
   if (!entry || entry.frames <= 1) return null;
 
@@ -349,11 +446,19 @@ export function animTimingFor(object: LevelObject, animation: ObjectAnimation, e
   const seed = object.index;
   const useSpeed = objectFlag(object, OBJECT_KEY.useSpeed);
   const speedKey = Number.parseFloat(object.props[OBJECT_KEY.animSpeed] ?? "0") || 0;
-  const divisor = useSpeed && speedKey !== 0 ? Math.abs(speedKey) : rolledSpeed(id, seed);
+  // Rings always take key 107 as their speed: customSetup sets +1228. [:182632-182640]
+  const ring = RING_IDS.has(id);
+  const divisor = ring
+    ? speedKey !== 0
+      ? Math.abs(speedKey)
+      : 1
+    : useSpeed && speedKey !== 0
+      ? Math.abs(speedKey)
+      : rolledSpeed(id, seed);
   const timing: AnimTiming = {
-    frames: animation.frames,
-    interval: Math.fround(Math.fround(animation.time) / Math.fround(divisor)),
-    reverse: useSpeed && speedKey < 0,
+    frames: ring ? Math.max(1, Math.trunc(40 / divisor)) : animation.frames,
+    interval: Math.fround(Math.fround(ring ? 0.02 : animation.time) / Math.fround(divisor)),
+    reverse: ring ? speedKey < 0 : useSpeed && speedKey < 0,
     startOffset: editor ? Math.fround(loadedStartOffset(id, objectFlag(object, OBJECT_KEY.randomStart), seed)) : 0,
     single: objectInt(object, OBJECT_KEY.singleFrame),
     offsetAnim: objectFlag(object, OBJECT_KEY.offsetAnim),

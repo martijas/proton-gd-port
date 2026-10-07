@@ -32,6 +32,7 @@ import {
   type LiveScene,
 } from "../src/render/drawList";
 import { ENTER } from "../src/render/enterEffects";
+import { ringPose } from "../src/render/anim";
 import type { AnimEntity, AnimPart } from "../src/assets/anims";
 import { existsSync, readFileSync } from "node:fs";
 import { BLEND, INSTANCE_BYTES } from "../src/engine/gl/spriteBatch";
@@ -678,6 +679,54 @@ test("an animated object plays the game's frames, and one on a trigger waits for
   assert.ok(Math.abs(width(after) - 6) < 1e-6, "frame 3, counted from the trigger");
   waiting.visible(VIEW, liveWith(table, { levelTime: 3.7, animationStartOf: () => 3 }), 3.7);
   assert.equal(waiting.visibleCount, 0, "one play, then hidden again");
+});
+
+test("ring and spin special animations reach the draw list", () => {
+  // [updateSyncedAnimation :621486-621565, :620889-620948]
+  const table = ColorTable.resolve(makeHeader());
+  const ringSet = atlasOf([["d_scaleFadeRing_01_001.png", 120]]);
+  const ringRec: ObjectRecord = {
+    ...baseOnly,
+    dd: 1,
+    ch: [{ f: "d_scaleFadeRing_01_001.png", dx: 0, dy: 0, z: -1, ax: 0.5, ay: -0.5, ct: "D" }],
+  };
+  const rings = buildWith([object(1839)], { 1839: ringRec }, table, ringSet);
+  assert.equal(rings.stats.animated, 1);
+  const early = rings.visible(VIEW, null, 0);
+  assert.ok(rings.visibleCount >= 1);
+  assert.equal(new Uint8Array(early.buffer)[43], 255, "opaque early in the pulse");
+  // Step 1 scales about the child's anchor; resting half-extent is 15 at 4 px/unit.
+  const earlyFloats = new Float32Array(early.buffer);
+  assert.ok(Math.abs(Math.hypot(earlyFloats[0], earlyFloats[1]) - 15 * ringPose(1, 40).scale) < 1e-3, "scaled about its anchor");
+  // Last step is opacity 0: the gather drops every ring sprite.
+  rings.visible(VIEW, null, 0.78);
+  assert.equal(rings.visibleCount, 0, "hidden on the last step");
+  const spinNames: Array<[string, number]> = [
+    ["gj22_anim_62_001.png", 40],
+    ["gj22_anim_62_002.png", 40],
+    ["gj22_anim_62_color_001.png", 40],
+    ["gj22_anim_62_color_002.png", 40],
+  ];
+  const spinRec: ObjectRecord = {
+    ...baseOnly,
+    f: "gj22_anim_62_001.png",
+    bc: 1,
+    dc: 2,
+    ch: [
+      { f: "gj22_anim_62_color_001.png", dx: 0, dy: 0, z: -100, sx: 2, sy: 2, ct: "D" },
+      { f: "gj22_anim_62_002.png", dx: 0, dy: 0, z: -1 },
+    ],
+  };
+  const spin = buildWith([object(2892, { 122: "1", 107: "1" })], { 2892: spinRec }, table, atlasOf(spinNames));
+  // Main sprite is skipped; colour child and the tagged copy both animate.
+  assert.equal(spin.stats.animated, 2);
+  // visible reuses its buffer; copy before the next gather.
+  const at0 = Float32Array.from(spin.visible(VIEW, null, 0).subarray(0, 4));
+  assert.ok(spin.visibleCount >= 2, "colour child and tagged copy");
+  const atStep = spin.visible(VIEW, null, 0.025);
+  // Step 1 is already −22°; step 2 is −45°. Both sit off the axes, and they differ.
+  assert.ok(Math.abs(at0[1]) > 1e-3, "step 1 is turned");
+  assert.ok(Math.abs(atStep[0] - at0[0]) > 1e-3 || Math.abs(atStep[1] - at0[1]) > 1e-3, "step 2 turns further");
 });
 
 test("a rotating object turns its sprites about its own centre while it is on screen", () => {

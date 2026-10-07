@@ -49,7 +49,7 @@ import { frameSourceSize } from "../assets/atlasTypes";
 import type { ChildRecord, Cut, ObjectRecord } from "../assets/objectTypes";
 import type { HsvShift, Level, LevelObject } from "../level/types";
 import { OBJECT_KEY, objectFlag, objectInt } from "../level/decode";
-import type { AreaTint, TriggerRuntime } from "../triggers/runtime";
+import type { TriggerRuntime } from "../triggers/runtime";
 import { loadAngles, loadRotation } from "../physics/objects";
 import {
   CHANNEL,
@@ -73,8 +73,11 @@ import {
   entityColours,
   flashHalves,
   hash01,
+  isRingAnimation,
+  isSpin16Animation,
   objectAnimationFor,
   randomFrameFor,
+  ringChildFrames,
   skeletonFor,
   skeletonFrame,
   startSkeleton,
@@ -86,11 +89,20 @@ import {
   type SkeletonPlan,
   type SkeletonSlot,
 } from "./anim";
-import { ENTER, ENTER_GROW_FROM, ENTER_SLIDE, enterFades, enterPose, enterProgress } from "./enterEffects";
+import {
+  ENTER,
+  ENTER_GROW_FROM,
+  ENTER_SLIDE,
+  customEnterProgress,
+  enterFades,
+  enterPose,
+  enterProgress,
+} from "./enterEffects";
 import type { AnimEntity } from "../assets/anims";
 import { textOf, textSprites, type LevelFont } from "./text";
 import { effectiveZLayer, effectiveZOrder, LAYER_Z } from "../triggers/shaderState";
-import { colorTriggerBlends, colorTriggerChannel, isColorTrigger } from "../triggers/runtime";
+import { areaEase } from "../triggers/area";
+import { colorTriggerBlends, colorTriggerChannel, isColorTrigger, type AreaTint } from "../triggers/runtime";
 import {
   batchZ,
   colourSpriteInFront,
@@ -548,9 +560,8 @@ interface Flipbook {
   sheet: Uint8Array;
   rotated: Uint8Array;
   /**
-   * Per-frame alpha multiplier. Always 1 for a sprite animation; a skeletal
-   * limb uses 0 for the frames it is not in, because a beast's part list
-   * changes between frames and a slot has to stay the same sprite.
+   * Per-frame alpha multiplier. A skeletal limb uses 0 for the frames it is
+   * not in; ring children use the special animation's fade.
    */
   alpha: Float32Array;
 }
@@ -628,6 +639,8 @@ interface ObjectState {
   latchOut: Uint8Array;
   /** Whether it sat above the middle of the screen when it latched. */
   above: Uint8Array;
+  /** Enter Tint (3021) effects applied this gather, or null. */
+  enterTints: (AreaTint[] | null)[];
 }
 
 function objectState(n: number): ObjectState {
@@ -666,6 +679,7 @@ function objectState(n: number): ObjectState {
     latchIn: new Uint8Array(size),
     latchOut: new Uint8Array(size),
     above: new Uint8Array(size),
+    enterTints: new Array(size).fill(null),
   };
 }
 
@@ -862,7 +876,7 @@ export class DrawList {
       let frameAlpha = 1;
       if (book >= 0) {
         const anim = os.anim[o];
-        if (anim >= 0) this.showFrame(at, this.flipbooks[book], os.frame[o]);
+        if (anim >= 0) frameAlpha = this.showLimb(at, this.flipbooks[book], os.frame[o]);
         else if (os.skel[o] >= 0) frameAlpha = this.showLimb(at, this.flipbooks[book], os.frame[o]);
         else frameAlpha = this.playFrame(at, this.flipbooks[book], seconds);
       } else if (meta.spin[i] >= 0 && os.angle[o] !== 0) {
@@ -1080,11 +1094,12 @@ export class DrawList {
     os.alpha[o] = 1;
     os.glowAlpha[o] = 1;
     os.tint[o] = -1;
+    os.enterTints[o] = null;
     if ((flags & O_INVISIBLE) !== 0) {
       this.invisibleBlock(o, x, live, screen);
     } else {
       if ((flags & O_KEEP_OPACITY) !== 0 || !enterFades(code)) {
-        // full opacity: key 64, "none", and the custom effects (not ported)
+        // full opacity: key 64, "none", and the custom effects (their own fade)
       } else if (
         (flags & O_FADE_EXEMPT) !== 0 &&
         ((flags & O_FADE_EXEMPT_UNLESS_BLENDING) === 0 ||
@@ -1108,8 +1123,13 @@ export class DrawList {
     os.dx[o] = 0;
     os.dy[o] = 0;
     os.scale[o] = 1;
-    // The custom effects (3017-3021) are not ported: an object under one rests.
-    if (code === ENTER.custom && (flags & O_KEEP_POSE) === 0) return;
+    // Custom enter (3017-3021): Fade and Tint from the channel's list; Move /
+    // Rotate / Scale are not drawn, so the object rests.
+    // [gdp applyCustomEnterEffect :90645-91026]
+    if (code === ENTER.custom) {
+      if ((flags & O_KEEP_POSE) === 0) this.applyCustomEnter(o, x, entering, live, screen);
+      return;
+    }
     const progress = enterProgress(entering ? screen.x1 - x : x - screen.x0);
     const done = (flags & O_KEEP_POSE) !== 0 || progress === 1;
     let use = 0;
@@ -1137,6 +1157,42 @@ export class DrawList {
     os.dx[o] = pose.dx;
     os.dy[o] = pose.dy;
     os.scale[o] = (flags & O_AUDIO_SCALE) !== 0 ? 1 : pose.scale;
+  }
+
+  /**
+   * Enter Fade (3020) and Enter Tint (3021) for one object. Progress is the
+   * distance inside the screen edge over key 222, eased by keys 242/243;
+   * Fade multiplies opacity by that, Tint blends like Area Tint.
+   * [gdp PlayLayer::applyCustomEnterEffect :90899-90958]
+   */
+  private applyCustomEnter(
+    o: number,
+    x: number,
+    entering: boolean,
+    live: LiveScene | null | undefined,
+    screen: ViewBox,
+  ): void {
+    const effects = live?.triggers.customEnters(this.objects.channel[o], entering);
+    if (!effects || effects.length === 0) return;
+    const os = this.objects;
+    const edge = entering ? screen.x1 : screen.x0;
+    let alpha = 1;
+    let tints: AreaTint[] | null = null;
+    for (const e of effects) {
+      const length = e.length + e.lengthPm * (live?.triggers.areaVariance(o, 223) ?? 0);
+      const offset = e.offset + e.offsetPm * (live?.triggers.areaVariance(o, 221) ?? 0);
+      const at = customEnterProgress(x, entering, edge, offset, length, e.deadzone);
+      if (at >= 1) continue;
+      if (e.id === 3020) {
+        if ((os.flags[o] & O_KEEP_OPACITY) !== 0) continue;
+        alpha *= areaEase(at, e.easing, e.rate);
+      } else if (e.id === 3021 && e.tint) {
+        (tints ??= []).push({ ...e.tint, value: at, percent: e.percent });
+      }
+    }
+    os.alpha[o] *= alpha;
+    os.glowAlpha[o] = os.alpha[o];
+    os.enterTints[o] = tints;
   }
 
   /** Works out the background colours the glows take, once a gather. [updateVisibility :95836-95863] */
@@ -1370,6 +1426,8 @@ export class DrawList {
       if (area.opacity !== undefined) alpha *= area.opacity;
       if (meta.black[i] !== 1) rgb = areaTinted(rgb, area.tints, isMain, colours);
     }
+    const enterTints = this.objects.enterTints[o];
+    if (enterTints && meta.black[i] !== 1) rgb = areaTinted(rgb, enterTints, isMain, colours);
     // The special animations' first-frame flash. [flashHalves]
     const flash = this.objects.flash[o];
     if (flash !== 0 && meta.glow[i] === 0 && (flash & (isMain ? 1 : 2)) !== 0) rgb = WHITE;
@@ -1520,6 +1578,11 @@ interface Pending {
   matrix: Affine;
   /** Frames this sprite plays on its object's clock, or null when it holds one frame for ever. */
   anim: readonly AnimFrame[] | null;
+  /**
+   * World point a frame's scale/turn acts about when the sprite is anchored
+   * (ring children); null means the sprite centre (2892/2893's spin).
+   */
+  animAbout: { x: number; y: number } | null;
   /** A flipbook built by the caller, for a skeletal limb. */
   book: Flipbook | null;
   /** The sprite in its object's own space and the object's transform, for one that turns. */
@@ -1991,10 +2054,26 @@ function bakeFlipbook(p: Pending, atlas: AtlasSet): Flipbook | null {
   const data = new Float32Array(frames.length * 10);
   const sheet = new Uint8Array(frames.length);
   const rotated = new Uint8Array(frames.length);
+  const alpha = new Float32Array(frames.length);
   for (let k = 0; k < frames.length; k++) {
     const found = atlas.frame(frames[k].f);
     if (!found) return null;
-    const matrix = frames[k].flip ? compose(p.matrix, FLIP_X) : p.matrix;
+    let matrix = frames[k].flip ? compose(p.matrix, FLIP_X) : p.matrix;
+    const s = frames[k].scale ?? 1;
+    const rot = frames[k].rot ?? 0;
+    if (s !== 1 || rot !== 0) {
+      if (p.animAbout) {
+        // Scale/turn about the child's position (cocos setScale / setRotation
+        // on an anchored sprite). [1839-1842 :621557-621560]
+        const { x: ox, y: oy } = p.animAbout;
+        const about = compose(affine(ox, oy, 0, 1, 1), compose(affine(0, 0, rot, s, s), affine(-ox, -oy, 0, 1, 1)));
+        matrix = compose(about, matrix);
+      } else {
+        // About the sprite centre: local origin of a centre-based bake.
+        // [2892/2893 :620942-620946]
+        matrix = compose(matrix, affine(0, 0, rot, s, s));
+      }
+    }
     const quad = frameQuad(found.atlas, found.frame, atlas.pxPerUnit);
     const centre = apply(matrix, quad.cx, quad.cy);
     const at = k * 10;
@@ -2010,6 +2089,7 @@ function bakeFlipbook(p: Pending, atlas: AtlasSet): Flipbook | null {
     data[at + 9] = quad.dv;
     sheet[k] = found.atlasIndex;
     rotated[k] = quad.rotated ? 1 : 0;
+    alpha[k] = frames[k].alpha ?? 1;
   }
   return {
     interval: 0,
@@ -2017,7 +2097,7 @@ function bakeFlipbook(p: Pending, atlas: AtlasSet): Flipbook | null {
     data,
     sheet,
     rotated,
-    alpha: new Float32Array(frames.length).fill(1),
+    alpha,
   };
 }
 
@@ -2288,14 +2368,31 @@ function emit(
   // The object's own animation, from the game's table, on a clock of its own.
   // A text object or a beast draws something else, and has none.
   const animation = record.txt || record.ent ? null : objectAnimationFor(object.id, (name) => atlas.has(name));
+  let animTiming: AnimTiming | null = null;
   if (animation) {
+    animTiming = animTimingFor(object, animation);
     objects.anim[order] = anims.length;
-    anims.push({ timing: animTimingFor(object, animation), memo: animMemo() });
+    anims.push({ timing: animTiming, memo: animMemo() });
   }
   // Key 96 hides the object's glow. [objectFromVector :184210-184213 (+876);
   //  GameObject::setVisible :164695-164705]
   const glows = !objectFlag(object, OBJECT_KEY.noGlow);
   const spins = objects.spinSpeed[order] !== 0;
+  // 2892/2893 hide the object's own sprite (+471) and animate a tagged copy;
+  // the tables still carry both, so the main one is skipped here.
+  // [setupCustomSprites :610842-610846; updateSyncedAnimation :620919]
+  const hideMain = !!record.dd || isSpin16Animation(object.id);
+
+  /** Frames a sprite plays: rings rebuild to the object's stepped cycle length. */
+  const framesOf = (resting: string | undefined, detail: boolean): readonly AnimFrame[] | null => {
+    if (!resting || !animation) return null;
+    if (isRingAnimation(object.id) && animTiming) {
+      if (!resting.startsWith("d_scaleFadeRing_01_")) return null;
+      const list = ringChildFrames(resting, animTiming.frames);
+      return list.every((a) => atlas.has(a.f)) ? list : null;
+    }
+    return animation.framesFor(resting, detail);
+  };
 
   // A skeletal entity replaces the object's own art rather than joining it: the
   // still frames in the table are what the object falls back to when the
@@ -2413,6 +2510,13 @@ function emit(
         placed.ty,
       );
     }
+    const book = anim && anim.length > 1 ? anim : null;
+    // Anchored children (rings) scale about the child's position; others about
+    // the sprite centre.
+    const animAbout =
+      book && anchor && book.some((a) => (a.scale ?? 1) !== 1 || (a.rot ?? 0) !== 0)
+        ? apply(compose(placed, local), 0, 0)
+        : null;
     const entry: Pending = {
       node: current,
       part,
@@ -2437,7 +2541,8 @@ function emit(
       additive: additive || blendsNow(blendChannel) ? 1 : 0,
       ownAdditive: additive ? 1 : 0,
       matrix,
-      anim: anim && anim.length > 1 ? anim : null,
+      anim: book,
+      animAbout,
       book: null,
       spin,
       object: object.index,
@@ -2507,7 +2612,7 @@ function emit(
   // variants (id 9) are the only user, and a row of them looks wrong if they
   // all pick the same one.
   const mainFrame = record.rnd && record.rnd.length > 0 ? randomFrameFor(record.rnd, object.index) : record.f;
-  const mainFrames = mainFrame && animation ? animation.framesFor(mainFrame, mainSlot === "D") : null;
+  const mainFrames = framesOf(mainFrame, mainSlot === "D");
   // The object's own sprite with everything hung on it, in tree order. A
   // don't-draw main sprite still carries its glow and children. [ObjectRecord.dd]
   // Orb/portal `*_extra*` children are addGuideArt's icons: only with the
@@ -2518,7 +2623,7 @@ function emit(
   const showGuides = record.k === "orb" ? orbGuide : record.k === "portal" ? portalGuide : true;
   if (!showGuides) children = children.filter((c) => !isGuideFrame(c.f));
   tree(children, IDENTITY, objectAlpha, PART_MAIN, () => {
-    if (!record.dd) push(mainFrame, mainSlot, objectAlpha, record.bl === 1, IDENTITY, PART_MAIN, mainFrames, null, false, record.cut);
+    if (!hideMain) push(mainFrame, mainSlot, objectAlpha, record.bl === 1, IDENTITY, PART_MAIN, mainFrames, null, false, record.cut);
   });
   // The glow goes in its layer's glow batch and always adds rather than covers.
   if (glows) push(record.g, mainSlot, objectAlpha, true, IDENTITY, PART_GLOW, null, null, true);
@@ -2659,6 +2764,7 @@ function emit(
         ownAdditive: record.bl === 1 ? 1 : 0,
         matrix,
         anim: null,
+        animAbout: null,
         book: null,
         spin: null,
         object: object.index,
@@ -2755,6 +2861,7 @@ function emit(
       ownAdditive: record.bl === 1 ? 1 : 0,
       matrix: parent,
       anim: null,
+      animAbout: null,
       book,
       spin: null,
       object: object.index,
@@ -2793,8 +2900,7 @@ function emit(
     // A don't-draw sprite still carries its children. [ChildRecord.dd]
     tree(c.ch ?? [], local, childAlpha, own, () => {
       if (c.dd) return;
-      const frames = animation && c.f ? animation.framesFor(c.f, slot === "D") : null;
-      push(c.f, slot, childAlpha, c.bl === 1, local, own, frames, anchor, false, c.cut);
+      push(c.f, slot, childAlpha, c.bl === 1, local, own, framesOf(c.f, slot === "D"), anchor, false, c.cut);
     });
     if (glows && c.g) push(c.g, slot, childAlpha, true, local, PART_GLOW, null, anchor, true);
   }

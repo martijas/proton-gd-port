@@ -524,7 +524,10 @@ test("the field reads an emitter's object's blending from its channels", () => {
 test("a respawn starts the field over without replaying the Animate triggers before it", () => {
   // One emitter that waits for an Animate trigger (key 123) and bursts five
   // particles when one comes. Going back in time is a practice respawn: the
-  // count the checkpoint kept is history, and only a new trigger starts it.
+  // game's resetObject clears +1237 and the checkpoint never restores it, so
+  // the count the checkpoint kept is history and only a new trigger starts it.
+  // [gdp EnhancedGameObject::resetObject :170066-170067; loadActiveSaveObjects
+  //  :92150-92183]
   const def = customString({ 0: 5, 1: 0, 2: 1, 4: -1 });
   const level = emptyLevel([{ id: CUSTOM_PARTICLE_ID, x: 300, y: 100, props: { 145: def, 123: "1" } }]);
   const field = new ParticleField(level, particleAtlas());
@@ -800,6 +803,46 @@ test("an object's own system off the screen's edge, where its object is faded ou
   const shown = portalField();
   for (let i = 0; i < 10; i++) count = shown.update(1 / 30, ON_SCREEN, { levelTime: 0, colors: null, animationsOf: () => 0 }).count;
   assert.ok(count > 0);
+});
+
+test("at opacity 0 the system's node is hidden: particles out are not drawn", () => {
+  // Dash's spider portal: Alpha reaches 0, setVisible hides the particle
+  // system, so the screenshot shows none even while timeToLive would still
+  // have them. Stop-at-50 alone would leave them finishing on screen.
+  // [GameObject::setVisible :164681; updateParticleOpacity :165124-165150]
+  const field = portalField({ 57: "7" });
+  const scene = (group: number) => ({
+    levelTime: 0,
+    colors: null,
+    animationsOf: () => 0,
+    objectFade: () => 1,
+    groupAlphaOf: (g: number) => (g === 7 ? group : 1),
+  });
+  for (let i = 0; i < 15; i++) field.update(1 / 30, ON_SCREEN, scene(1));
+  assert.ok(field.update(1 / 30, ON_SCREEN, scene(1)).count > 0, "particles are out");
+  assert.equal(field.update(1 / 30, ON_SCREEN, scene(0)).count, 0, "opacity 0 hides them at once");
+});
+
+test("off screen, particles already out finish instead of the system resetting", () => {
+  // [GJBaseGameLayer::preUpdateVisibility :452902]
+  const field = portalField();
+  for (let i = 0; i < 15; i++) field.update(1 / 30, ON_SCREEN, { levelTime: 0, colors: null, animationsOf: () => 0 });
+  const out = field.update(1 / 30, ON_SCREEN, { levelTime: 0, colors: null, animationsOf: () => 0 }).count;
+  assert.ok(out > 0, "on screen first");
+  // Emitter at x 300; view far left so 300 is past the 240-unit margin.
+  const off = { x0: -2000, y0: -400, x1: -1500, y1: 400 };
+  const still = field.update(1 / 30, off, { levelTime: 0, colors: null, animationsOf: () => 0 }).count;
+  assert.ok(still > 0, "particles out keep drawing off screen");
+  assert.ok(still <= out, "but nothing new is spawned");
+  for (let i = 0; i < 60; i++) field.update(1 / 30, off, { levelTime: 0, colors: null, animationsOf: () => 0 });
+  assert.equal(field.update(1 / 30, off, { levelTime: 0, colors: null, animationsOf: () => 0 }).count, 0, "then they finish");
+});
+
+test("keys 116 and 507 skip an object's own particle system", () => {
+  // [createAndAddParticle :167750; objectFromVector keys 116 and 507]
+  assert.equal(portalField({ 116: "1" }).emitterCount, 0, "no effects");
+  assert.equal(portalField({ 507: "1" }).emitterCount, 0, "no particles");
+  assert.equal(portalField().emitterCount, 1);
 });
 
 test("a Custom Particles object's opacity dims every particle it has out, and never stops it", () => {

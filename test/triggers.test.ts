@@ -1121,6 +1121,37 @@ test("picking up a collectible raises Pickup Item", () => {
   assert.equal(sim.triggers.itemCount(1), 1);
 });
 
+test("a dash orb raises Dash Start and Dash Stop", () => {
+  // [gdp startDashing :148787-148789; stopDashing :149917-149919]
+  const dash = (events: string): number => {
+    const sim = simOn(eventLevel({ 430: events }, [{ id: 1704, x: 150, y: 45 }], false));
+    stepN(sim, NO_INPUT, 2);
+    for (let i = 0; i < 400; i++) sim.step(sim.state.x > 130 && sim.state.x < 200 ? HOLD : NO_INPUT);
+    return sim.triggers.itemCount(1);
+  };
+  assert.ok(dash("23") >= 1, "dash start");
+  assert.ok(dash("24") >= 1, "dash stop");
+});
+
+test("a platformer cube jumping into a ceiling raises Hit Head", () => {
+  // Cubes take the head path in a platformer. Block above the spawn (x 15).
+  // [gdp :152123-152129]
+  const head = simOn(eventLevel({ 430: "6" }, [{ id: 1, x: 15, y: 75 }], true));
+  stepN(head, NO_INPUT, 2);
+  stepN(head, HOLD, 1);
+  stepN(head, NO_INPUT, 80);
+  assert.ok(head.triggers.itemCount(1) >= 1, "hit head");
+});
+
+test("Fall Speed Low fires when the cube's fall crosses 2", () => {
+  // [gdp postCollision :159202-159231]
+  const sim = simOn(eventLevel({ 430: "76" }, [], false));
+  stepN(sim, NO_INPUT, 2);
+  stepN(sim, HOLD, 1);
+  stepN(sim, NO_INPUT, 120);
+  assert.ok(sim.triggers.itemCount(1) >= 1, "fall speed low");
+});
+
 test("Camera Mode's key 111 frees the corridor, as a free-mode portal does", () => {
   // A ship portal sets up a band; a Camera Mode trigger with 111 = 1 drops it
   // at once. The port read key 1 (the object id) and so never did anything.
@@ -1254,6 +1285,29 @@ test("a Keyframe Animation trigger carries its group along the keyframes' path",
   near(x(), 300, 1e-6, "the whole way");
 });
 
+test("a Keyframe's turn takes over an older Rotate on the same group", () => {
+  // Without kA27, a keyframe that emits a turn clears the group's rotate
+  // list the way registerRotationCommand does, so an older 180° Rotate loses
+  // its share. Both turn about C (group 8); the keyframe's +90° wins.
+  // [gdp prepareMoveActions :486625-486638]
+  const { level, at } = grouped(
+    [
+      { id: 1346, x: 0, y: 300, props: { 51: "9", 71: "8", 68: "180", 10: "1" } },
+      { id: 3033, x: 1, y: 300, props: { 71: "8", 76: "20", 520: "1", 521: "1", 522: "1", 523: "1" } },
+      { id: 3032, x: 300, y: 600, rotation: 0, props: { 51: "9", 374: "1", 10: "1" } },
+      { id: 3032, x: 300, y: 600, rotation: 90, props: { 51: "9", 374: "2" } },
+      { id: 1, x: 300, y: 600 },
+      { id: 1, x: 330, y: 600 },
+    ],
+    { 2: [20], 3: [20], 4: [8], 5: [9] },
+  );
+  const sim = simOn(level);
+  stepN(sim, NO_INPUT, 300);
+  const [x, y] = sim.triggers.objectPosition(at(5));
+  near(x, 300, 1, "x stays on the centre's column");
+  near(y, 630, 1, "a quarter turn about C, not a half");
+});
+
 test("Dash's orb runs its keyframe path, and six presses put out the coin", { skip: LEVELS }, async () => {
   // The orb (group 514) circles on Keyframe Animation 17811; every press
   // pulses it and adds 1 to item 1, and at 6 the coin's group 537 comes on
@@ -1287,4 +1341,103 @@ test("Dash's orb runs its keyframe path, and six presses put out the coin", { sk
   assert.equal(sim.triggers.groupIsEnabled(537), true, "the coin's group is on");
   assert.equal(triggers.touchActions.length, 0, "the touch is stopped");
   assert.ok(Math.max(...orb) - Math.min(...orb) > 100, "the orb moves");
+});
+
+// --- Stop colour / count, Sequence modes, Options respawn ---------------------
+
+test("Stop finishes a colour fade where it stands", () => {
+  // Colour at 50 to red over 2 s; Stop at 80 on the colour's group.
+  // [gdp controlActionsForTrigger :484919-484938]
+  const { level } = grouped(
+    [
+      { id: 899, x: 50, y: 300, props: { 23: "1", 7: "0", 8: "0", 9: "0", 10: "2", 35: "1", 36: "1" } },
+      { id: 1616, x: 80, y: 300, props: { 51: "5" } },
+    ],
+    { 0: [5] },
+  );
+  const sim = makeSim(level, undefined, { visuals: true, start: { x: 0, y: 45 } });
+  const before = sim.triggers.colors.get(1).r;
+  for (let i = 0; i < 200 && sim.state.x < 55; i++) sim.step(NO_INPUT);
+  assert.ok(sim.state.x >= 50, `reached colour at x=${sim.state.x}`);
+  sim.triggers.updateVisuals(0.5);
+  const mid = sim.triggers.colors.get(1);
+  assert.ok(mid.r < before, `fading: r=${mid.r} from ${before}`);
+  const frozen = mid.r;
+  for (let i = 0; i < 200 && sim.state.x < 85; i++) sim.step(NO_INPUT);
+  assert.ok(sim.state.x >= 80, `reached Stop at x=${sim.state.x}`);
+  sim.triggers.updateVisuals(1);
+  assert.equal(sim.triggers.colors.get(1).r, frozen, "Stop freezes the fade");
+});
+
+test("Stop ends an armed Count so a later change does not fire it", () => {
+  // Count for item 1 reaching 1, then Stop, then a Pickup that would have fired it.
+  // [gdp controlActionsForTrigger :484729-484763]
+  const { level } = grouped(
+    [
+      { id: 1611, x: 30, y: 300, props: { 80: "1", 77: "1", 51: "9", 56: "1" } },
+      { id: 1616, x: 90, y: 300, props: { 51: "5" } },
+      { id: 1817, x: 150, y: 300, props: { 80: "1", 77: "1" } },
+      { id: 1817, x: 0, y: 900, props: { 62: "1", 87: "1", 80: "2", 77: "1" } },
+    ],
+    { 0: [5], 3: [9] },
+  );
+  const sim = simOn(level);
+  stepN(sim, NO_INPUT, 200);
+  assert.equal(sim.triggers.itemCount(1), 1, "pickup ran");
+  assert.equal(sim.triggers.itemCount(2), 0, "Count's group never spawned");
+});
+
+test("Sequence mode 0 stops after the last step, mode 2 stays on it, mode 1 loops", () => {
+  // One multi-trigger Sequence in group 20, spawned five times; each step's
+  // group has a Pickup that adds 1 to its item.
+  // [gdp SequenceTriggerGameObject::triggerObject :316076-316086]
+  const seq = (mode: string): number[] => {
+    const { level } = grouped(
+      [
+        { id: 3607, x: 0, y: 900, props: { 435: "10.1.11.1.12.1", 436: mode, 62: "1", 87: "1" } },
+        { id: 1817, x: 0, y: 930, props: { 62: "1", 87: "1", 80: "1", 77: "1" } },
+        { id: 1817, x: 0, y: 960, props: { 62: "1", 87: "1", 80: "2", 77: "1" } },
+        { id: 1817, x: 0, y: 990, props: { 62: "1", 87: "1", 80: "3", 77: "1" } },
+        { id: 1268, x: 60, y: 300, props: { 51: "20", 63: "0" } },
+        { id: 1268, x: 120, y: 300, props: { 51: "20", 63: "0" } },
+        { id: 1268, x: 180, y: 300, props: { 51: "20", 63: "0" } },
+        { id: 1268, x: 240, y: 300, props: { 51: "20", 63: "0" } },
+        { id: 1268, x: 300, y: 300, props: { 51: "20", 63: "0" } },
+      ],
+      { 0: [20], 1: [10], 2: [11], 3: [12] },
+    );
+    const sim = simOn(level);
+    stepN(sim, NO_INPUT, 400);
+    return [sim.triggers.itemCount(1), sim.triggers.itemCount(2), sim.triggers.itemCount(3)];
+  };
+  assert.deepEqual(seq("0"), [1, 1, 1], "stop: three steps then nothing");
+  assert.deepEqual(seq("2"), [1, 1, 3], "last: third keeps firing");
+  assert.deepEqual(seq("1"), [2, 2, 1], "loop: wraps");
+});
+
+test("an Options trigger's respawn edit clamps 1..10 and hideAttempts is stored", () => {
+  // [gdp processOptionsTrigger :429844-429882]
+  const sim = simOn(
+    emptyLevel([
+      { id: 2899, x: 30, y: 300, props: { 573: "1", 574: "15", 532: "1" } },
+    ]),
+  );
+  stepN(sim, NO_INPUT, 60);
+  const o = sim.triggers.visual.options;
+  assert.equal(o.respawnTime, 10, "clamped to 10");
+  assert.equal(o.editRespawnTime, true);
+  assert.equal(o.hideAttempts, true);
+});
+
+test("a gravity portal raises Gravity Inverted and Portal: Gravity Flip", () => {
+  // Raise the events the portal path raises, through the same Event listener.
+  // [gdp PlayerObject::flipGravity :151141-151147; collisionCheckObjects :463517]
+  const sim = simOn(eventLevel({ 430: "10.50" }, [], false));
+  stepN(sim, NO_INPUT, 2);
+  assert.equal(sim.triggers.itemCount(1), 0);
+  sim.triggers.gameEvent(10, 0, 1);
+  assert.equal(sim.triggers.itemCount(1), 1, "Gravity Inverted");
+  sim.step(NO_INPUT); // a fresh tick: one spawn a (group, spawner) a tick
+  sim.triggers.gameEvent(50, 0, 1);
+  assert.equal(sim.triggers.itemCount(1), 2, "Portal: Gravity Flip");
 });

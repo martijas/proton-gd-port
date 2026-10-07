@@ -48,8 +48,9 @@ export interface StreakStyle {
 
 /**
  * The streak's settings by its number, CCMotionStreak::create(fade, minSeg,
- * stroke): 0.3 s, 5 and 10 unless the streak says otherwise. Streak 6's
- * repeating texture (enableRepeatMode(0.1)) is drawn stretched like the rest.
+ * stroke): 0.3 s, 5 and 10 unless the streak says otherwise. Streak 6 calls
+ * enableRepeatMode(0.1) so the game tiles the art by distance along the
+ * ribbon; build() still lays v as i/n over the whole ribbon (stretched).
  * [gdp PlayerObject::setupStreak :160708-160766]
  */
 export function streakStyle(id: number): StreakStyle {

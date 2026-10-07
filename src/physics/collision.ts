@@ -1099,62 +1099,87 @@ export function collideSolid(
     // 2. The object extends above feet + threshold: ceiling or side contact.
     const ceilingCapable = ((p.isFlying || p.isBall) && !passable) || boolB;
     if (ceilingCapable && i !== p.lastFloorObj) {
+      // Deep: both the head and where it was sit more than thr past the
+      // object's near face. Not deep always reaches LABEL_221. Deep still
+      // does when this was last pass's ceiling (upright) or floor (flipped);
+      // otherwise the head path is skipped and a classic player falls through
+      // to the inner hitbox. That sticky identity is how a moving solid keeps
+      // crushing after it crosses the snap threshold.
+      // [gd-ida-decomp.cpp:152043-152057, 152209-152213]
       const deep = objBot < head - thr && objBot < prevHead - thr;
-      // Moving away from the block, the head meets it only when it moves at
-      // more than 5, or when it comes down on a head that crossed it: then
-      // the player is put under it and falls at least 1 faster than the block.
-      // [gd-ida-decomp.cpp:152060-152061 and 152089-152120 (normal gravity),
-      //  151853-151889 (flipped)]
-      const away = g * p.yVel < 0 && !p.wasOnSlope && !fastPlatform && (p.flipped || !plat || p.lastPlatformYVel <= 0);
-      if (!deep && away && objAboveFeet && awayFromFeet) {
-        const v = p.yVel;
-        setRelY(p, objBot - half);
-        p.hitGroundNoJump(i, true);
-        recordSqueezeContact(p, true, breakable || passable, g * objTop, g * objBot, pivotX, pivotY, i);
-        p.setYVelocity(v);
-        const limit = p.platformYVel - g;
-        if (g * p.yVel > g * limit) p.setYVelocity(limit);
-        return plat && breakable ? R_BREAK : R_CEIL;
-      }
-      if (!deep && !away) {
-        setRelY(p, objBot - half);
-        if (isCube) checkSnapJumpToObject(p, o, i);
-        // A head contact with canSnap set (always, for a full-size player that
-        // is not this deep) stops the player and leaves the ground flags and
-        // the latch alone, so a ball cannot flip off a block's underside.
-        // [gdp collidedWithObjectInternal,
-        // gd-ida-decomp.cpp:152150-152153 via 152213 (normal gravity),
-        // 151937-151940 (flipped); hitGroundNoJump :150215-150229]
-        if (!boolB || ((p.isFlying || p.isBall) && !passable)) {
-          if (objAboveFeet) p.hitGroundNoJump(i, true);
-          else p.hitGround(i, true);
-        } else p.setYVelocity(0);
-        // The squeeze contact: a ceiling, or with canSnap clear (a player whose
-        // threshold is over half its height, as a mini ball's is) the block's
-        // top as a floor. An F block's flip below clears it again.
-        // [flipGravity, gd-ida-decomp.cpp:151146-151147]
-        recordSqueezeContact(p, objAboveFeet, breakable || passable, g * objTop, g * objBot, pivotX, pivotY, i);
-        // [:152155-152206, as for a landing]
-        if (!objAboveFeet) landedOn(p, o, i, platformVel);
-        else if (p.isFlying && toFeet) p.setYVelocity(p.platformYVel);
-        // The J block's check runs after head contacts too, before the F block.
-        // [gd-ida-decomp.cpp:152169-152170 (normal gravity), 151985-151986 (flipped)]
-        if (isCube && p.stateNoAutoJump > 0 && p.padRingRelated) p.holding = false;
-        if (objAboveFeet && p.stateFlipGravity > 0) {
-          // F block: touching its underside turns the player over, toward it:
-          // 2 toward the new floor. [gdp didHitHead → hardFlipGravity,
-          // gd-ida-decomp.cpp:151223-151232, 151248-151265]
-          p.flipGravity(!p.flipped);
-          p.setYVelocity(-HEAD_SNAP_PUSH_VELOCITY * p.flipMod());
-          p.maybeIsBoosted = true;
-          p.onGround2 = false;
-          if (p.stateNoAutoJump > 0) {
-            p.onGround = false;
-            p.holding = false;
-            p.stateRingJump = false;
+      const deepSticky = p.flipped ? i === p.prevFloorObj : i === p.prevCeilingObj;
+      if (!deep || deepSticky) {
+        // Moving away from the block, the head meets it only when it moves at
+        // more than 5, or when it comes down on a head that crossed it: then
+        // the player is put under it and falls at least 1 faster than the block.
+        // [gd-ida-decomp.cpp:152060-152061 and 152089-152120 (normal gravity),
+        //  151853-151889 (flipped)]
+        const away = g * p.yVel < 0 && !p.wasOnSlope && !fastPlatform && (p.flipped || !plat || p.lastPlatformYVel <= 0);
+        if (away && objAboveFeet && awayFromFeet) {
+          const v = p.yVel;
+          setRelY(p, objBot - half);
+          p.hitGroundNoJump(i, true);
+          recordSqueezeContact(p, true, breakable || passable, g * objTop, g * objBot, pivotX, pivotY, i);
+          p.setYVelocity(v);
+          const limit = p.platformYVel - g;
+          if (g * p.yVel > g * limit) p.setYVelocity(limit);
+          // didHitHead on the special pin path too. [:152110, :151877]
+          if (p.stateFlipGravity > 0) {
+            p.flipGravity(!p.flipped);
+            p.setYVelocity(-HEAD_SNAP_PUSH_VELOCITY * p.flipMod());
+            p.maybeIsBoosted = true;
+            p.onGround2 = false;
+            if (p.stateNoAutoJump > 0) {
+              p.onGround = false;
+              p.holding = false;
+              p.stateRingJump = false;
+            }
           }
+          return plat && breakable ? R_BREAK : R_CEIL;
         }
-        return plat && breakable ? R_BREAK : R_CEIL;
+        if (!away) {
+          // Hit Head while rising into the ceiling, before the snap path may
+          // zero velocity without calling hitGround. [gdp :152123-152129]
+          p.raiseHitHead(i);
+          setRelY(p, objBot - half);
+          if (isCube) checkSnapJumpToObject(p, o, i);
+          // A head contact with canSnap set stops the player and leaves the
+          // ground flags and the latch alone, so a ball cannot flip off a
+          // block's underside.
+          // [gdp collidedWithObjectInternal,
+          // gd-ida-decomp.cpp:152150-152153 via 152213 (normal gravity),
+          // 151937-151940 (flipped); hitGroundNoJump :150215-150229]
+          if (!boolB || ((p.isFlying || p.isBall) && !passable)) {
+            if (objAboveFeet) p.hitGroundNoJump(i, true);
+            else p.hitGround(i, true);
+          } else p.setYVelocity(0);
+          // The squeeze contact: a ceiling, or with canSnap clear (a player whose
+          // threshold is over half its height, as a mini ball's is) the block's
+          // top as a floor. An F block's flip below clears it again.
+          // [flipGravity, gd-ida-decomp.cpp:151146-151147]
+          recordSqueezeContact(p, objAboveFeet, breakable || passable, g * objTop, g * objBot, pivotX, pivotY, i);
+          // [:152155-152206, as for a landing]
+          if (!objAboveFeet) landedOn(p, o, i, platformVel);
+          else if (p.isFlying && toFeet) p.setYVelocity(p.platformYVel);
+          // The J block's check runs after head contacts too, before the F block.
+          // [gd-ida-decomp.cpp:152169-152170 (normal gravity), 151985-151986 (flipped)]
+          if (isCube && p.stateNoAutoJump > 0 && p.padRingRelated) p.holding = false;
+          if (objAboveFeet && p.stateFlipGravity > 0) {
+            // F block: touching its underside turns the player over, toward it:
+            // 2 toward the new floor. [gdp didHitHead → hardFlipGravity,
+            // gd-ida-decomp.cpp:151223-151232, 151248-151265]
+            p.flipGravity(!p.flipped);
+            p.setYVelocity(-HEAD_SNAP_PUSH_VELOCITY * p.flipMod());
+            p.maybeIsBoosted = true;
+            p.onGround2 = false;
+            if (p.stateNoAutoJump > 0) {
+              p.onGround = false;
+              p.holding = false;
+              p.stateRingJump = false;
+            }
+          }
+          return plat && breakable ? R_BREAK : R_CEIL;
+        }
       }
     }
   }

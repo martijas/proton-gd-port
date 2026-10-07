@@ -2,8 +2,16 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Level } from "../src/level/types";
 import { NO_INPUT, type Sim } from "../src/physics/types";
-import { closestDirectionMod, followSpeedVal, type AdvFollowHost } from "../src/triggers/advancedFollow";
+import {
+  AdvancedFollowSystem,
+  closestDirectionMod,
+  followSpeedVal,
+  getSpecialKey,
+  PositionHistory,
+  type AdvFollowHost,
+} from "../src/triggers/advancedFollow";
 import { emptyLevel, type Placed, simOn, stepN } from "./levelKit";
+import type { TriggerSpec } from "../src/triggers/spec";
 
 function withGroups(extra: Placed[], groups: Record<number, number[]>): { level: Level; at: (i: number) => number } {
   const level = emptyLevel(extra);
@@ -187,4 +195,166 @@ test("Stop 1616 ends advanced follow", () => {
   stepN(sim, NO_INPUT, 120);
   const late = centre(sim, at(2))[0];
   assert.ok(late - mid < 15, `follow should stop after 1616 (${mid} -> ${late})`);
+});
+
+test("getSpecialKey packs group and the 280/281 flags", () => {
+  assert.equal(getSpecialKey(5, false, false), 100000005);
+  assert.equal(getSpecialKey(5, true, false), 110000005);
+  assert.equal(getSpecialKey(5, false, true), 101000005);
+  assert.equal(getSpecialKey(5, true, true), 111000005);
+});
+
+test("PositionHistory lerps a delayed sample and returns (0,0) before enough history", () => {
+  const hist = new PositionHistory();
+  hist.ensure(3, 50);
+  let x = 0;
+  const host: AdvFollowHost = {
+    grp: (id) => id,
+    groupMembers: () => [],
+    mainObject: (g) => (g === 3 ? 0 : -1),
+    targetObject: () => -1,
+    objectPosition: () => [x, 100],
+    objectRotation: () => 0,
+    objectId: () => 1,
+    objectGroups: () => [],
+    specOf: () => undefined,
+    player1: () => [0, 0],
+    player2: () => null,
+    noteMoved: () => {},
+    markDirty: () => {},
+    setMotion: () => {},
+  };
+  assert.deepEqual(hist.get(host, 3, 0.1), [0, 0], "no samples yet");
+  for (let i = 0; i < 48; i++) {
+    x = i * 10;
+    hist.record(host);
+  }
+  const delayed = hist.get(host, 3, 0.1); // 24 frames back
+  assert.ok(delayed[0] < x - 100, `delayed x ${delayed[0]} should lag live ${x}`);
+  assert.ok(delayed[0] > 0, "should have a real sample");
+  near(delayed[1], 100, "y");
+});
+
+test("a delayed follow lags a moving target", () => {
+  const sys = new AdvancedFollowSystem();
+  const positions = new Map<number, [number, number]>([
+    [1, [0, 0]],
+    [2, [0, 0]],
+  ]);
+  const spec = {
+    id: 3016,
+    index: 0,
+    x: 0,
+    y: 0,
+    touch: false,
+    spawnTriggered: false,
+    multi: false,
+    sharedPlayer: false,
+    ordering: 0,
+    channel: 0,
+    controlId: 0,
+    target: 1,
+    target2: 2,
+    activateGroup: false,
+    duration: 0,
+    easing: 0,
+    easingRate: 0,
+    groups: [] as number[],
+    props: { 51: "1", 71: "2", 292: "0.1", 361: "1", 367: "0", 298: "999" },
+  } satisfies TriggerSpec;
+  const host: AdvFollowHost = {
+    grp: (id) => id,
+    groupMembers: (g) => (g === 1 ? [1] : g === 2 ? [2] : []),
+    mainObject: (g) => (g === 2 ? 2 : -1),
+    targetObject: () => -1,
+    objectPosition: (i) => positions.get(i) ?? [0, 0],
+    objectRotation: () => 0,
+    objectId: (i) => (i === 0 ? 3016 : 1),
+    objectGroups: () => [],
+    specOf: (i) => (i === 0 ? spec : undefined),
+    player1: () => [0, 0],
+    player2: () => null,
+    noteMoved: () => {},
+    markDirty: () => {},
+    setMotion: (i, dx, dy) => {
+      const p = positions.get(i);
+      if (p) {
+        p[0] += dx;
+        p[1] += dy;
+      }
+    },
+  };
+  const rand = { table: new Float32Array(2000), index: new Int32Array(32) };
+  const rng = { seed: 1, next01: () => 0.5, next: () => 0, fork: () => rng };
+  sys.trigger(spec, host);
+  // Build history with the target still at 0, then jump it ahead.
+  for (let i = 0; i < 30; i++) sys.step(1, i + 1, host, rand as never, rng as never);
+  positions.get(2)![0] = 500;
+  const before = positions.get(1)![0];
+  for (let i = 0; i < 12; i++) sys.step(1, 31 + i, host, rand as never, rng as never);
+  const soon = positions.get(1)![0];
+  assert.ok(soon - before < 50, `delay should keep the follower near the old aim (${before} -> ${soon})`);
+  for (let i = 0; i < 80; i++) sys.step(1, 43 + i, host, rand as never, rng as never);
+  assert.ok(positions.get(1)![0] > 200, "then it catches the new target");
+});
+
+test("enter-effect group-copy passes move the copy members", () => {
+  const sys = new AdvancedFollowSystem();
+  const positions = new Map<number, [number, number]>([
+    [1, [0, 0]],
+    [2, [100, 0]],
+    [10, [50, 0]],
+  ]);
+  const moved: number[] = [];
+  const spec = {
+    id: 3016,
+    index: 0,
+    x: 0,
+    y: 0,
+    touch: false,
+    spawnTriggered: false,
+    multi: false,
+    sharedPlayer: false,
+    ordering: 0,
+    channel: 0,
+    controlId: 0,
+    target: 1,
+    target2: 2,
+    activateGroup: false,
+    duration: 0,
+    easing: 0,
+    easingRate: 0,
+    groups: [] as number[],
+    props: { 51: "1", 71: "2", 361: "1", 367: "0", 298: "999", 280: "1" },
+  } satisfies TriggerSpec;
+  const host: AdvFollowHost = {
+    grp: (id) => id,
+    groupMembers: (g) => (g === 1 ? [1] : g === 2 ? [2] : []),
+    mainObject: (g) => (g === 2 ? 2 : -1),
+    targetObject: () => -1,
+    objectPosition: (i) => positions.get(i) ?? [0, 0],
+    objectRotation: () => 0,
+    objectId: (i) => (i === 0 ? 3016 : 1),
+    objectGroups: () => [],
+    specOf: (i) => (i === 0 ? spec : undefined),
+    player1: () => [0, 0],
+    player2: () => null,
+    enterCopySlot: (key) => (key === getSpecialKey(1, true, false) ? 3 : 0),
+    copyGroupMembers: (slot, pass) => (slot === 3 && pass === 0 ? [10] : slot === 3 && pass === 1 ? [1] : []),
+    noteMoved: () => {},
+    markDirty: () => {},
+    setMotion: (i, dx) => {
+      const p = positions.get(i);
+      if (p) {
+        p[0] += dx;
+        moved.push(i);
+      }
+    },
+  };
+  const rand = { table: new Float32Array(2000), index: new Int32Array(32) };
+  const rng = { seed: 1, next01: () => 0.5, next: () => 0, fork: () => rng };
+  sys.trigger(spec, host);
+  for (let i = 0; i < 30; i++) sys.step(1, i + 1, host, rand as never, rng as never);
+  assert.ok(moved.includes(10), "copy member should move");
+  assert.ok(positions.get(10)![0] > 0, "copy closes on the target");
 });

@@ -11,6 +11,7 @@ import {
   CircleWaves,
   PORTAL_WAVES,
   shownOpacity,
+  completeEffectWaves,
   spawnEffectWaves,
   waveAlpha,
   wavesFor,
@@ -479,6 +480,29 @@ test("the spawn effect is four rings a tenth of a second apart, on the player", 
   assert.deepEqual(ws.map((w) => w.spec.delay), [0, 0.1, 0.2, 0.30000000000000004]);
   assert.ok(ws.every((w) => w.spec.scheduled && w.spec.outline && w.spec.from === 70 && w.spec.to === 2));
   assert.deepEqual(ws[0].follow, { kind: "player", which: 2 });
+});
+
+test("level-complete circles: three rings at the end and three discs per player", () => {
+  const ws = completeEffectWaves(400, 100, [{ which: 1, x: 390, y: 95 }], context());
+  assert.equal(ws.length, 6);
+  assert.deepEqual(
+    ws.slice(0, 3).map((w) => [w.spec.from, w.spec.to, w.spec.duration, w.spec.outline, w.spec.lineWidth, w.x, w.y]),
+    [
+      [10, 250, 0.5, true, 4, 400, 100],
+      [10, 250, 0.8, true, 4, 400, 100],
+      [10, 250, 0.8, true, 4, 400, 100],
+    ],
+  );
+  assert.equal(ws[0].spec.fadeIn, true);
+  assert.deepEqual(
+    ws.slice(3).map((w) => [w.spec.from, w.spec.to, w.spec.duration, w.spec.opacityMod, w.follow]),
+    [
+      [20, 80, 0.72, 1, { kind: "player", which: 1 }],
+      [30, 50, 0.84, 0.7, { kind: "player", which: 1 }],
+      [30, 20, 0.96, 0.7, { kind: "player", which: 1 }],
+    ],
+  );
+  assert.equal(completeEffectWaves(0, 0, [{ which: 1, x: 0, y: 0 }, { which: 2, x: 1, y: 1 }], context()).length, 9);
 });
 
 // --- how one moves -----------------------------------------------------------------

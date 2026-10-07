@@ -129,14 +129,29 @@ import {
 import { DEG, slerp2D } from "./geometry";
 import {
   EVENT_BALL_SWITCH,
+  EVENT_DASH_STOP,
+  EVENT_FALL_HIGH,
+  EVENT_FALL_LOW,
+  EVENT_FALL_MED,
+  EVENT_FALL_SPEED_HIGH,
+  EVENT_FALL_SPEED_LOW,
+  EVENT_FALL_SPEED_MED,
+  EVENT_FALL_VHIGH,
   EVENT_FEATHER_LANDING,
+  EVENT_GRAVITY_INVERTED,
+  EVENT_GRAVITY_RESTORED,
   EVENT_HARD_LANDING,
+  EVENT_HIT_HEAD,
   EVENT_NORMAL_JUMP,
   EVENT_NORMAL_LANDING,
   EVENT_ROBOT_BOOST_START,
   EVENT_ROBOT_BOOST_STOP,
   EVENT_SOFT_LANDING,
+  EVENT_SWING_SWITCH,
   EVENT_TINY_LANDING,
+  EVENT_UFO_JUMP,
+  EVENT_WAVE_PUSH,
+  EVENT_WAVE_RELEASE,
 } from "./gameEvents";
 
 /** What the player needs from the world: events, the spider's surface search and the level's flags. */
@@ -584,6 +599,22 @@ export class Player implements PlayerState {
   // --- spider ------------------------------------------------------------------
   lastSpiderFlipTick = -1e9;
 
+  /**
+   * +2488: y where the current fall began, for Fall Low/Med/High/VHigh on
+   * landing. 0 when none. Cleared after the landing events, and by a teleport.
+   * [gdp hitGround :150056-150090; set when the boost ends :155957 and while
+   *  the jump latch is set :155981-155982; cleared on teleport :462334]
+   */
+  fallStartY = 0;
+  /**
+   * +1944: last postCollision y velocity, for Fall Speed Low/Med/High when the
+   * current one crosses 2, 7 or 14 against gravity. [gdp postCollision
+   *  :159202-159231]
+   */
+  prevFallYVel = 0;
+  /** +1911 for the wave: last step's hold, so Wave Push/Release fire on a change. */
+  waveWasHolding = false;
+
   // --- checkSnapJumpToObject --------------------------------------------------
   snapObj = -1;
   snapDistance = 0;
@@ -674,6 +705,24 @@ export class Player implements PlayerState {
   readonly logBottom: number[] = [];
   readonly logLeft: number[] = [];
   readonly logRight: number[] = [];
+  /**
+   * storeCollision's latest floor and ceiling this pass (+1256 / +1260 as
+   * dword indices 314 / 315): the object last written for that direction, or
+   * -1. resetCollisionLog(false) moves them to prevFloorObj / prevCeilingObj.
+   * [gdp storeCollision :142448-142458; resetCollisionLog :142408-142420]
+   */
+  passFloorObj = -1;
+  passCeilingObj = -1;
+  /**
+   * Last pass's floor and ceiling objects (+1272 / +1276, dword indices
+   * 318 / 319). collidedWithObjectInternal's deep head-hit path still meets
+   * the previous ceiling (upright) or previous floor (flipped) so a moving
+   * solid can keep crushing after it crosses the snap threshold.
+   * [gdp collidedWithObjectInternal :152052-152057, :152209-152213;
+   *  resetCollisionLog :142408-142418]
+   */
+  prevFloorObj = -1;
+  prevCeilingObj = -1;
 
   /** Current tick, mirrored from the sim before every update. */
   tick = 0;
@@ -782,6 +831,8 @@ export class Player implements PlayerState {
     const b = this.collideBottom;
     if (b === 0 || (this.flipped ? v < b : v > b)) this.collideBottom = v;
     logCollision(this.logBottom, object);
+    // storeCollision direction 1: remember the latest named floor this pass.
+    if (object >= 0 && object !== this.passFloorObj) this.passFloorObj = object;
   }
 
   /**
@@ -793,10 +844,27 @@ export class Player implements PlayerState {
     const t = this.collideTop;
     if (t === 0 || (this.flipped ? v > t : v < t)) this.collideTop = v;
     logCollision(this.logTop, object);
+    // storeCollision direction 0: remember the latest named ceiling this pass.
+    if (object >= 0 && object !== this.passCeilingObj) this.passCeilingObj = object;
   }
 
-  /** resetCollisionLog: the log empty. [gd-ida-decomp.cpp:142397-142420] */
-  resetCollisionLog(): void {
+  /**
+   * resetCollisionLog: empty the log. With `clearPrev` false (each step), last
+   * pass's floor and ceiling become prevFloorObj / prevCeilingObj; with it
+   * true (gravity flip, gameplay turn), those are cleared too.
+   * [gd-ida-decomp.cpp:142397-142420; GJBaseGameLayer::update :469854 with 0,
+   *  flipGravity :151155 and rotateGameplay :152508 with 1]
+   */
+  resetCollisionLog(clearPrev = false): void {
+    if (clearPrev) {
+      this.prevFloorObj = -1;
+      this.prevCeilingObj = -1;
+    } else {
+      this.prevFloorObj = this.passFloorObj;
+      this.prevCeilingObj = this.passCeilingObj;
+    }
+    this.passFloorObj = -1;
+    this.passCeilingObj = -1;
     this.logTop.length = 0;
     this.logBottom.length = 0;
     this.logLeft.length = 0;
@@ -986,6 +1054,7 @@ export class Player implements PlayerState {
     this.isSpider = mode === "spider";
     this.isSwing = mode === "swing";
     this.isFlying = this.isShip || this.isUfo || this.isWave || this.isSwing;
+    if (!this.isWave) this.waveWasHolding = false;
     if (mode !== left) {
       this.stopRotation();
       if (mode === "cube" && FLY_TOGGLE_MODES.has(left)) this.runRotateAction();
@@ -1213,6 +1282,88 @@ export class Player implements PlayerState {
     this.isAccelerating = true;
     this.yVel = add ? this.yVel + vy : vy;
     if (this.world.platformer) this.xVel = add ? this.xVel + vx : vx;
+  }
+
+  /**
+   * redirectPlayerForce: turn the current velocity toward `angle` degrees,
+   * scale by `mod`, then clamp its length between `min` and `max` when those
+   * are above 0. [gdp PlayerObject::redirectPlayerForce :147472-147541]
+   */
+  redirectPlayerForce(angle: number, mod: number, min: number, max: number): void {
+    let x = Math.fround(this.world.platformer ? this.xVel : 0);
+    let y = Math.fround(this.yVel);
+    const want = Math.fround(angle * DASH_DEG);
+    const have = Math.atan2(y, x);
+    let step = want - have;
+    // convertToClosestDirection(…, π). [gdp :147497]
+    const pi = Math.fround(Math.PI);
+    if (step < -pi) {
+      const n = Math.ceil(Math.floor(Math.abs(step) / pi) * 0.5);
+      step = step + n * (pi + pi);
+    } else if (step > pi) {
+      const n = Math.ceil(Math.floor(Math.abs(step) / pi) * 0.5);
+      step = step - n * (pi + pi);
+    }
+    if (step !== 0) {
+      const c = Math.fround(Math.cos(step));
+      const s = Math.fround(Math.sin(step));
+      const nx = Math.fround(Math.fround(x * c) - Math.fround(y * s));
+      const ny = Math.fround(Math.fround(x * s) + Math.fround(y * c));
+      x = nx;
+      y = ny;
+    }
+    x = Math.fround(x * mod);
+    y = Math.fround(y * mod);
+    let len = Math.fround(Math.sqrt(Math.fround(Math.fround(x * x) + Math.fround(y * y))));
+    if (max > 0 && len > max) {
+      const k = Math.fround(max / len);
+      x = Math.fround(x * k);
+      y = Math.fround(y * k);
+      len = max;
+    } else if (min > 0 && len < min) {
+      if (len === 0) {
+        x = Math.fround(min * Math.fround(Math.cos(want)));
+        y = Math.fround(min * Math.fround(Math.sin(want)));
+      } else {
+        const k = Math.fround(min / len);
+        x = Math.fround(x * k);
+        y = Math.fround(y * k);
+      }
+    }
+    if (this.rotated) {
+      const t = x;
+      x = y;
+      y = t;
+    }
+    this.isAccelerating = true;
+    this.yVel = y;
+    if (this.world.platformer) this.xVel = x;
+  }
+
+  /**
+   * redirectDash: turn the dash velocity pair toward `angle` degrees.
+   * [gdp PlayerObject::redirectDash :148410-148460]
+   */
+  redirectDash(angle: number): void {
+    if (!this.dashing) return;
+    let x = Math.fround(this.dashVelX);
+    let y = Math.fround(this.dashVelY);
+    const want = Math.fround(angle * DASH_DEG);
+    const have = Math.atan2(y, x);
+    let step = want - have;
+    const pi = Math.fround(Math.PI);
+    if (step < -pi) {
+      const n = Math.ceil(Math.floor(Math.abs(step) / pi) * 0.5);
+      step = step + n * (pi + pi);
+    } else if (step > pi) {
+      const n = Math.ceil(Math.floor(Math.abs(step) / pi) * 0.5);
+      step = step - n * (pi + pi);
+    }
+    if (step === 0) return;
+    const c = Math.fround(Math.cos(step));
+    const s = Math.fround(Math.sin(step));
+    this.dashVelX = Math.fround(Math.fround(x * c) - Math.fround(y * s));
+    this.dashVelY = Math.fround(Math.fround(x * s) + Math.fround(y * c));
   }
 
   /**
@@ -1525,6 +1676,8 @@ export class Player implements PlayerState {
               this.setYVelocity(this.yVel > v39 ? v39 : this.yVel);
             }
             this.world.emit("jump", this.playerNo, undefined, "ufo");
+            // UFO Jump. [gdp updateJump :155700-155702]
+            this.world.gameEvent?.(EVENT_UFO_JUMP, this.playerNo);
           }
         }
         const v41 = this.fallingBugged() ? UFO_GRAVITY_FALLING : UFO_GRAVITY_RISING;
@@ -1534,6 +1687,11 @@ export class Player implements PlayerState {
       } else if (this.isWave) {
         // Direction only; the position integration uses ±velX directly. [gdp updateJump :155636-155649]
         this.setYVelocity(this.playerSpeed * this.speedMultiplier * flipMod * (jumpBuffered ? 1 : -1));
+        // Wave Push / Release when the hold changes. [gdp updateJump :155650-155666]
+        if (jumpBuffered !== this.waveWasHolding) {
+          this.world.gameEvent?.(jumpBuffered ? EVENT_WAVE_PUSH : EVENT_WAVE_RELEASE, this.playerNo);
+        }
+        this.waveWasHolding = jumpBuffered;
       } else {
         // swing
         if (this.stateRingJump && jumpBuffered) {
@@ -1543,6 +1701,8 @@ export class Player implements PlayerState {
           // The velocity before the flip, as a float, × 0.8. [:155604-155615]
           this.setYVelocity(Math.fround(Math.fround(v66) * SWING_CLICK_FACTOR));
           this.world.emit("jump", this.playerNo, undefined, "swing");
+          // Swing Switch. [gdp updateJump :155616-155618]
+          this.world.gameEvent?.(EVENT_SWING_SWITCH, this.playerNo);
         }
         const v67 = this.mini ? SWING_GRAVITY_MINI : SWING_GRAVITY;
         // Read after the click: the tick it flips on already falls the new way.
@@ -1633,10 +1793,15 @@ export class Player implements PlayerState {
         if (this.fallingBugged() || (this.world.platformer && !(this.flipped ? this.yVel < 0 : this.yVel > 0))) {
           this.maybeIsBoosted = false;
           this.onGround2 = false;
+          // Fall start y as the boost ends. [gdp updateJump :155949-155957]
+          this.fallStartY = this.worldY;
           // And once more as it starts to fall, if the hold never ended. [:155958-155969]
           if (this.isRobot && !this.robotHoldEnded) this.world.gameEvent?.(EVENT_ROBOT_BOOST_STOP, this.playerNo);
         }
       } else {
+        // While the jump latch is set, keep the fall start on the player.
+        // [gdp updateJump :155981-155982]
+        if (this.onGround) this.fallStartY = this.worldY;
         if (
           this.fallingBugged() &&
           (!this.world.platformer || this.clock - this.lastLandTick >= PLATFORMER_LAND_DELAY * TICKS_PER_SECOND)
@@ -1798,12 +1963,15 @@ export class Player implements PlayerState {
   flipGravity(flipped: boolean): void {
     if (this.flipped === flipped) return;
     this.flipped = flipped;
+    // Gravity Inverted / Restored for Event triggers. [gdp PlayerObject::
+    //  flipGravity :151141-151147]
+    this.world.gameEvent?.(flipped ? EVENT_GRAVITY_INVERTED : EVENT_GRAVITY_RESTORED, this.playerNo);
     this.lastFlipTick = this.clock;
     // The floor and ceiling met so far this pass no longer count, nor does
     // the collision log. [:151146-151147, :151155]
     this.collideTop = 0;
     this.collideBottom = 0;
-    this.resetCollisionLog();
+    this.resetCollisionLog(true);
     // On a slope, or just off one, "going down it" turns over with the
     // gravity; the slope-exit launch reads it. [:151153-151154]
     if (this.wasOnSlope || this.onSlope) this.slopeDescending = !this.slopeDescending;
@@ -2011,6 +2179,16 @@ export class Player implements PlayerState {
   }
 
   /**
+   * Hit Head (6): into a ceiling while rising. Raised in the collision path
+   * before hitGround / hitGroundNoJump, including when a platformer snap path
+   * zeroes velocity without calling either. [gdp collidedWithObjectInternal
+   *  :151918-151922, :152123-152129]
+   */
+  raiseHitHead(objIdx: number): void {
+    if (this.rel(this.yVel) > 0) this.world.gameEvent?.(EVENT_HIT_HEAD, this.playerNo, objIdx >= 0 ? objIdx : undefined);
+  }
+
+  /**
    * hitGround(object, ceiling). Any contact puts the player on the ground
    * (+2044), but only one that came in no faster than 5 against gravity arms
    * the jump latch (+1969) and stamps the landing time — so a player that
@@ -2032,7 +2210,16 @@ export class Player implements PlayerState {
       const landing =
         v9 < -14 ? EVENT_HARD_LANDING : v9 < -8 ? EVENT_NORMAL_LANDING : v9 < -4 ? EVENT_SOFT_LANDING : v9 < -1 ? (this.onGround2 ? EVENT_TINY_LANDING : EVENT_FEATHER_LANDING) : 0;
       if (landing !== 0) this.world.gameEvent(landing, this.playerNo, objIdx >= 0 ? objIdx : undefined);
+      // Fall Low/Med/High/VHigh from how far the player dropped since the fall
+      // began. [gdp hitGround :150056-150090]
+      if (this.fallStartY !== 0) {
+        const drop = Math.abs(this.fallStartY - this.worldY);
+        const fall =
+          drop > 450 ? EVENT_FALL_VHIGH : drop > 300 ? EVENT_FALL_HIGH : drop > 150 ? EVENT_FALL_MED : drop > 7.5 ? EVENT_FALL_LOW : 0;
+        if (fall !== 0) this.world.gameEvent(fall, this.playerNo, objIdx >= 0 ? objIdx : undefined);
+      }
     }
+    this.fallStartY = 0;
     this.onGround2 = true;
     if (v9 <= LANDING_LATCH_MAX_VELOCITY) {
       this.onGround = true;
@@ -2287,6 +2474,32 @@ export class Player implements PlayerState {
     }
     if (this.isBall) this.runBallRotation(1);
     this.world.emit("dashEnd", this.playerNo);
+    // Dash Stop. [gdp stopDashing :149917-149919]
+    this.world.gameEvent?.(EVENT_DASH_STOP, this.playerNo);
+  }
+
+  /**
+   * Fall Speed Low/Med/High when y velocity crosses 2, 7 or 14 against gravity,
+   * skipping a slope contact. Called at the end of the collision pass, as
+   * postCollision does. [gdp PlayerObject::postCollision :159202-159231]
+   */
+  raiseFallSpeedEvents(): void {
+    if (this.onSlope || this.wasOnSlope) {
+      this.prevFallYVel = this.yVel;
+      return;
+    }
+    const cur = this.yVel;
+    const prev = this.prevFallYVel;
+    if (this.flipped) {
+      if (cur > 2 && prev < 2) this.world.gameEvent?.(EVENT_FALL_SPEED_LOW, this.playerNo);
+      if (cur > 7 && prev < 7) this.world.gameEvent?.(EVENT_FALL_SPEED_MED, this.playerNo);
+      if (cur > 14 && prev < 14) this.world.gameEvent?.(EVENT_FALL_SPEED_HIGH, this.playerNo);
+    } else {
+      if (cur < -2 && prev > -2) this.world.gameEvent?.(EVENT_FALL_SPEED_LOW, this.playerNo);
+      if (cur < -7 && prev > -7) this.world.gameEvent?.(EVENT_FALL_SPEED_MED, this.playerNo);
+      if (cur < -14 && prev > -14) this.world.gameEvent?.(EVENT_FALL_SPEED_HIGH, this.playerNo);
+    }
+    this.prevFallYVel = cur;
   }
 
   /**
@@ -2437,6 +2650,9 @@ export class Player implements PlayerState {
     this.holdTicks = o.holdTicks;
     this.dashing = o.dashing;
     this.dashAngle = o.dashAngle;
+    this.fallStartY = o.fallStartY;
+    this.prevFallYVel = o.prevFallYVel;
+    this.waveWasHolding = o.waveWasHolding;
     this.dead = o.dead;
     this.wasOutOfBounds = o.wasOutOfBounds;
     this.teleported = o.teleported;
@@ -2488,6 +2704,10 @@ export class Player implements PlayerState {
     this.lastY = o.lastY;
     this.stepY = o.stepY;
     this.lastFloorObj = o.lastFloorObj;
+    this.passFloorObj = o.passFloorObj;
+    this.passCeilingObj = o.passCeilingObj;
+    this.prevFloorObj = o.prevFloorObj;
+    this.prevCeilingObj = o.prevCeilingObj;
     this.wallLeftObj = o.wallLeftObj;
     this.wallRightObj = o.wallRightObj;
     this.wasOnSlope = o.wasOnSlope;
@@ -2568,7 +2788,8 @@ export class Player implements PlayerState {
    * force block's push still to come or still sliding out, and a
    * reverse-sync offset still to pay off. The force IDs and the squeeze's floor,
    * ceiling, walls and collision log are left out: the next update, pass or
-   * step empties them before anything reads them.
+   * step empties them before anything reads them. prevFloorObj / prevCeilingObj
+   * are kept: the next step's deep head-hit path reads them.
    */
   carryHash(h: number): number {
     for (const i of this.touchingRings) h = Math.imul(h ^ (i + 1), 0x01000193);
@@ -2592,6 +2813,8 @@ export class Player implements PlayerState {
       (this.forceSlide ? 131072 : 0) |
       (this.noBoostYPasses << 18);
     if (this.lastPlatformYVel !== 0) h = Math.imul(h ^ Math.round(this.lastPlatformYVel * 4096) ^ 0x01000000, 0x01000193);
+    if (this.prevFloorObj >= 0) h = Math.imul(h ^ (this.prevFloorObj + 1) ^ 0x00100000, 0x01000193);
+    if (this.prevCeilingObj >= 0) h = Math.imul(h ^ (this.prevCeilingObj + 1) ^ 0x00200000, 0x01000193);
     if (this.dashing) {
       // The pair to 1/4096 of a unit is plenty to tell a traded one apart.
       h = Math.imul(h ^ (this.dashOrbIdx + 1) ^ 0x08000000, 0x01000193);

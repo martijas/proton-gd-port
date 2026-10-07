@@ -20,7 +20,7 @@ import { collideSolid, ObjectSet, R_CEIL, R_LAND } from "../src/physics/collisio
 import { Player, type PlayerWorld } from "../src/physics/player";
 import { NO_INPUT, type Sim } from "../src/physics/types";
 import type { GameMode } from "../src/level/types";
-import { buildLevel, makeHeader, type Placed, simOn } from "./levelKit";
+import { buildLevel, emptyLevel, makeHeader, type Placed, simOn } from "./levelKit";
 
 const BLOCK = 1;
 const SLOPE = 289;
@@ -513,4 +513,78 @@ test("each step starts the collision log over", () => {
   sim.step(NO_INPUT);
   assert.deepEqual(p1(sim).logTop, []);
   assert.equal(sim.state.dead, false);
+});
+
+// --- moving solid crush -----------------------------------------------------------
+
+/** A wide ceiling in group 5, pulled down by a Move, over the plain ground. */
+function descendingCeiling(platformer = false): ReturnType<typeof simOn> {
+  const level = emptyLevel(
+    [
+      { id: BLOCK, x: 200, y: 80, scaleX: 20 },
+      { id: 901, x: 0, y: 600, props: { 51: "5", 29: "-50", 10: "0.5" } },
+    ],
+    makeHeader({ playerSqueeze: true, platformer }),
+  );
+  for (const o of level.objects) if (o.id === BLOCK && o.y === 80) o.groups = [5];
+  return simOn(level, { x: 45, y: 45, mode: "ship" });
+}
+
+test("a ship crushed by a descending solid dies by squeeze, not the inner hitbox", () => {
+  // The moving-object head path keeps the previous pass's ceiling sticky once
+  // the block crosses the snap threshold (deep), so both contacts stay for the
+  // squeeze test. Without that, the ceiling falls through the head into the
+  // inner box and the death names an object. [collidedWithObjectInternal
+  // :152043-152213; storeCollision / resetCollisionLog :142397-142458]
+  const sim = descendingCeiling();
+  for (let t = 0; t < 120 && !sim.state.dead; t++) sim.step(NO_INPUT);
+  assert.equal(sim.state.dead, true);
+  assert.equal(p1(sim).killedBy, null, "squeeze, not an object");
+  assert.ok(p1(sim).collideTop > 0 && p1(sim).collideBottom > 0, "both contacts");
+  assert.ok(p1(sim).collideTop - p1(sim).collideBottom < 0.7 * 30, "gap under 0.7 of height");
+});
+
+test("resetCollisionLog keeps last pass's floor and ceiling for the deep head path", () => {
+  // resetCollisionLog(false) moves pass* into prev*; (true) clears both.
+  // [:142397-142420]
+  const w: PlayerWorld = { emit: () => {}, spiderJump: () => {}, platformer: false, dual: false, fixGravityBug: false, boostSlide: true };
+  const p = new Player(w, 1);
+  p.updateCollideBottom(10, p.x, p.y, 4);
+  p.updateCollideTop(60, p.x, p.y, 5);
+  assert.deepEqual([p.passFloorObj, p.passCeilingObj], [4, 5]);
+  p.resetCollisionLog();
+  assert.deepEqual([p.prevFloorObj, p.prevCeilingObj, p.passFloorObj, p.passCeilingObj], [4, 5, -1, -1]);
+  assert.deepEqual([p.logTop, p.logBottom], [[], []]);
+  p.updateCollideTop(50, p.x, p.y, 7);
+  p.resetCollisionLog(true);
+  assert.deepEqual([p.prevFloorObj, p.prevCeilingObj, p.passCeilingObj], [-1, -1, -1]);
+});
+
+test("a deep head hit still snaps under last pass's ceiling; without it there is no head contact", () => {
+  // Upright + deep: only prevCeilingObj reaches LABEL_221; any other solid
+  // skips the head path. Bottom at 50 is past head−thr (54) but above the
+  // inner box (49.5), so a stranger returns none; the sticky id still snaps.
+  // [:152209-152213]
+  const level = emptyLevel([{ id: BLOCK, x: 300, y: 65 }], makeHeader({ playerSqueeze: true }));
+  const sim = simOn(level, { x: 300, y: 45, mode: "ship" });
+  const o = (sim as unknown as { objs: ObjectSet }).objs;
+  const p = p1(sim);
+  let i = -1;
+  for (let k = 0; k < o.n; k++) if (Math.abs(o.cy[k] - 65) < 0.1) i = k;
+  assert.ok(i >= 0);
+  Object.assign(p, { x: 300, y: 45, lastY: 45, yVel: 0, collideTop: 0, collideBottom: 0, lastFloorObj: -1 });
+  p.prevCeilingObj = -1;
+  assert.equal(collideSolid(p, o, i, false), 0, "no sticky id: no head snap in the deep band");
+  Object.assign(p, { y: 45, lastY: 45, yVel: 0, collideTop: 0, collideBottom: 0 });
+  p.prevCeilingObj = i;
+  assert.equal(collideSolid(p, o, i, false), R_CEIL, "sticky ceiling: still a head snap");
+  assert.equal(p.collideTop, 50 + 90);
+});
+
+test("a platformer ship crushed by a descending solid also dies by squeeze", () => {
+  // Platformer always squeezes; the sticky deep head path is the same.
+  const sim = descendingCeiling(true);
+  for (let t = 0; t < 120 && !sim.state.dead; t++) sim.step(NO_INPUT);
+  assert.equal(sim.state.dead, true);
+  assert.equal(p1(sim).killedBy, null);
 });

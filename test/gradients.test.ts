@@ -6,8 +6,9 @@ import assert from "node:assert/strict";
 import type { Level, LevelObject } from "../src/level/types";
 import { NO_INPUT } from "../src/physics/types";
 import type { ColorSource, ResolvedChannel } from "../src/render/colors";
-import { GRADIENT_SLOT, GradientPainter, gradientSlot, placeGradient, type GradientWorld } from "../src/render/gradients";
+import { GRADIENT_SLOT, GradientPainter, gradientNodeZ, gradientSlot, isScreenSpaceLayer, placeGradient, type GradientWorld } from "../src/render/gradients";
 import type { GradientState, TriggerRuntime } from "../src/triggers/runtime";
+import { OBJECT_Z } from "../src/triggers/shaderState";
 import { BLEND, INSTANCE_BYTES, INSTANCE_FLOATS, blendNeedsGl } from "../src/engine/gl/spriteBatch";
 import { makeSim } from "./helpers";
 import { emptyLevel } from "./levelKit";
@@ -70,7 +71,7 @@ function dashWorld(start = channel(216, 0, 255), end = channel(78, 0, 255, 0)): 
   ]);
   const colors: ColorSource = { get: (id) => colours.get(id ?? 0) ?? channel(255, 255, 255) };
   const world: GradientWorld = { level, triggers, colors, view: { x0: 1000, y0: 16, x1: 1626, y1: 314 } };
-  const state: GradientState = { id: 0, object: 0, layer: 5, blend: 1, vertexMode: false, groups: [103, 102, 0, 0], start: 78, end: 79 };
+  const state: GradientState = { id: 0, object: 0, layer: 5, zOrder: 0, blend: 1, vertexMode: false, groups: [103, 102, 0, 0], start: 78, end: 79 };
   return { world, state };
 }
 
@@ -139,6 +140,43 @@ test("the layers draw after their parts: the world's over their batch layer, the
   assert.equal(gradientSlot(9), GRADIENT_SLOT.FRONT);
   assert.equal(gradientSlot(13), GRADIENT_SLOT.GROUND);
   assert.equal(gradientSlot(15), GRADIENT_SLOT.GROUND);
+  // B1 at z order 0 sits under the player's particles; z order ≥ 1 over them.
+  // [gdp triggerGradientCommand :436467-436474; maxZOrder(B1) = 38]
+  assert.equal(gradientNodeZ(7, 0), 38);
+  assert.equal(gradientNodeZ(7, 1), OBJECT_Z.PARTICLES_UNDER);
+  assert.equal(gradientSlot(7, 0), GRADIENT_SLOT.BEHIND + 4);
+  assert.equal(gradientSlot(7, 1), GRADIENT_SLOT.B1_OVER_PARTICLES);
+  assert.equal(gradientSlot(7, 5), GRADIENT_SLOT.B1_OVER_PARTICLES);
+  // [gdp triggerGradientCommand :436475-436477]
+  for (const layer of [1, 2, 13, 14, 15]) assert.equal(isScreenSpaceLayer(layer), true, `layer ${layer}`);
+  for (const layer of [3, 5, 8, 12]) assert.equal(isScreenSpaceLayer(layer), false, `layer ${layer}`);
+});
+
+test("a screen-space gradient's corners are inverse-rotated so the view's turn leaves them upright", () => {
+  // BG, MG, G, UI and Max cancel the batch turn; B5–T4 do not.
+  const { world, state } = dashWorld();
+  const cx = 1313;
+  const cy = 165;
+  const r = (90 * Math.PI) / 180;
+  const c = Math.cos(r);
+  const s = Math.sin(r);
+  const apply = (x: number, y: number): [number, number] => {
+    const dx = x - cx;
+    const dy = y - cy;
+    return [cx + dx * c + dy * s, cy - dx * s + dy * c];
+  };
+  for (const layer of [1, 2, 13, 14, 15]) {
+    const screen = { ...state, layer };
+    const flat = placeGradient(screen, world)!;
+    const turned = placeGradient(screen, { ...world, turn: 90, centre: { x: cx, y: cy } })!;
+    for (let i = 0; i < 8; i += 2) {
+      const [sx, sy] = apply(turned.corners[i], turned.corners[i + 1]);
+      assert.ok(Math.abs(sx - flat.corners[i]) < 1e-6 && Math.abs(sy - flat.corners[i + 1]) < 1e-6, `layer ${layer} corner ${i / 2}`);
+    }
+  }
+  // An object-layer gradient is left alone.
+  const obj = placeGradient(state, { ...world, turn: 90, centre: { x: cx, y: cy } })!;
+  assert.deepEqual(obj.corners, placeGradient(state, world)!.corners);
 });
 
 test("the quad is drawn as strips across the way the colour runs, each its own colour", () => {

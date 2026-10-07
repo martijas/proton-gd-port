@@ -9,7 +9,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { EventDrain } from "../src/audio/events";
+import { TICKS_PER_SECOND } from "../src/physics/constants";
 import { NO_INPUT, type Sim } from "../src/physics/types";
+import { statusOf } from "../src/triggers/registry";
 import { LEVELS_DIR, loadObjectTable, loadOfficialLevel } from "./helpers";
 import { emptyLevel, simOn, stepN, type Placed } from "./levelKit";
 
@@ -20,12 +22,18 @@ function runToEnd(sim: Sim, max = 600): number {
   return sim.tick;
 }
 
-test("a passed End trigger ends a classic level, and says where the player is flown", () => {
-  // x 300 is passed on tick 220 (x 300.6); the level runs on to x 3000.
+test("registry: End trigger is done", () => {
+  assert.equal(statusOf(3600).status, "done");
+});
+
+test("a passed End trigger flies the player to the end point for one second, then finishes", () => {
+  // x 300 is passed on tick 220 (x 300.6); without key 487 the player flies
+  // for TICKS_PER_SECOND then levelComplete. [gdp playPlatformerEndAnimationToPos]
   const sim = simOn(emptyLevel([{ id: 3600, x: 300, y: 200 }]));
-  assert.equal(runToEnd(sim), 220);
+  assert.equal(runToEnd(sim, 220 + TICKS_PER_SECOND + 10), 220 + TICKS_PER_SECOND);
   assert.equal(sim.state.finished, true);
-  assert.ok(sim.state.x >= 300 && sim.state.x < 302);
+  assert.ok(Math.abs(sim.state.x - 300) < 0.01, String(sim.state.x));
+  assert.ok(Math.abs(sim.state.y - 200) < 0.01, String(sim.state.y));
   assert.deepEqual(sim.end, { x: 300, y: 200, instant: false, effects: true, sound: true });
   assert.ok(sim.events.some((e) => e.type === "finish"));
   const time = sim.triggers.levelTime;
@@ -101,10 +109,11 @@ test("the end sound plays for a level's end unless its End trigger has key 461",
     new EventDrain().drain(sim, { effect: (name) => out.push(name), trigger: () => {} }, false);
     return out;
   };
+  const flight = 220 + TICKS_PER_SECOND + 10;
   for (const [extra, max, sound] of [
     [[], 4000, ["endStart_02"]],
-    [[{ id: 3600, x: 300, y: 200 }], 600, ["endStart_02"]],
-    [[{ id: 3600, x: 300, y: 200, props: { 461: "1" } }], 600, []],
+    [[{ id: 3600, x: 300, y: 200 }], flight, ["endStart_02"]],
+    [[{ id: 3600, x: 300, y: 200, props: { 461: "1" } }], flight, []],
   ] as const) {
     const sim = simOn(emptyLevel([...extra]));
     runToEnd(sim, max);
@@ -160,12 +169,12 @@ test("a restore to before the end takes it back", () => {
   stepN(sim, NO_INPUT, 100);
   const snap = sim.snapshot();
   const h = sim.stateHash();
-  runToEnd(sim);
+  runToEnd(sim, 220 + TICKS_PER_SECOND + 10);
   assert.equal(sim.state.finished, true);
   sim.restore(snap);
   assert.deepEqual([sim.state.finished, sim.end, sim.stateHash()], [false, null, h]);
-  runToEnd(sim);
-  assert.equal(sim.tick, 220, "and ends again on the same tick");
+  runToEnd(sim, 220 + TICKS_PER_SECOND + 10);
+  assert.equal(sim.tick, 220 + TICKS_PER_SECOND, "and finishes again after the same flight");
 });
 
 test("the tower floors each end on a spawned End trigger that the table now treats as a trigger", { skip: LEVELS }, async () => {

@@ -21,6 +21,7 @@ import {
   nextSkeletonClip,
   objectAnimationFor,
   randomFrameFor,
+  ringPose,
   skeletonFor,
   skeletonFrame,
   startSkeleton,
@@ -403,8 +404,6 @@ test("a sprite plays the family its resting frame belongs to", () => {
   assert.deepEqual(wave?.[5], { f: "d_animWave_01_006.png", flip: false });
   // A family with a frame missing is not played at all.
   assert.equal(objectAnimationFor(2041, (n) => !n.endsWith("_012.png"))?.framesFor("gj22_anim_22_001.png", false) ?? null, null);
-  // The special animations that are not transcribed hold still.
-  assert.equal(objectAnimationFor(1839, everyFrame), null);
   const drops = objectAnimationFor(1855, everyFrame);
   assert.equal(drops?.framesFor("explosion_01_007.png", false)?.[0].f, "gj_drops05_2_001.png");
   assert.equal(drops?.framesFor("explosion_01_007.png", false)?.[7].f, "gj_drops05_2_008.png");
@@ -413,6 +412,79 @@ test("a sprite plays the family its resting frame belongs to", () => {
   assert.equal(spray?.framesFor("gj_drops06_001.png", false)?.[3].f, "gj_drops06_004.png");
   assert.equal(spray?.framesFor("gj_drops06_2_001.png", false)?.[3].f, "gj_drops06_2_004.png");
   assert.equal(spray?.framesFor("gj_drops06_3_001.png", false)?.[3].f, "gj_drops06_3_004.png");
+});
+
+test("1839-1842 scale and fade their ring children", () => {
+  // [updateSyncedAnimation :621486-621565; customSetup :182632-182640]
+  const anim = objectAnimationFor(1839, everyFrame);
+  assert.ok(anim);
+  assert.equal(anim.frames, 40);
+  assert.equal(anim.time, 0.02);
+  assert.equal(anim.framesFor("emptyFrame.png", false), null);
+  const ring = anim.framesFor("d_scaleFadeRing_01_001.png", true);
+  assert.equal(ring?.length, 40);
+  assert.equal(ring?.[0].f, "d_scaleFadeRing_01_001.png");
+  assert.ok(Math.abs((ring?.[0].scale ?? 0) - ringPose(1, 40).scale) < 1e-9);
+  assert.ok(Math.abs((ring?.[0].alpha ?? 0) - ringPose(1, 40).alpha) < 1e-9);
+  assert.equal(ring?.[39].scale, 1);
+  assert.equal(ring?.[39].alpha, 0);
+  // First third stays fully opaque; later steps fade. [:621530-621538]
+  assert.equal(ringPose(1, 40).alpha, 1);
+  assert.equal(ringPose(12, 40).alpha, 1);
+  assert.ok(ringPose(20, 40).alpha < 1);
+  // customSetup always takes key 107 as the speed: 40/speed steps at 0.02/speed.
+  const slow = timingOf(1840);
+  assert.equal(slow.frames, 40);
+  assert.equal(slow.interval, Math.fround(0.02));
+  const fast = timingOf(1841, { 107: "2" });
+  assert.equal(fast.frames, 20);
+  assert.equal(fast.interval, Math.fround(0.01));
+  assert.equal(timingOf(1842, { 107: "-1" }).reverse, true);
+  assert.equal(syncedFrame({ ...slow, interval: Math.fround(0.02) }, 0.04), 2);
+});
+
+test("2892 and 2893 walk a 16-step spin of frame and turn", () => {
+  // [updateSyncedAnimation :620889-620948]
+  const a62 = objectAnimationFor(2892, everyFrame);
+  assert.ok(a62);
+  assert.equal(a62.frames, 16);
+  assert.equal(a62.time, 0.025);
+  const main62 = a62.framesFor("gj22_anim_62_001.png", false);
+  const colour62 = a62.framesFor("gj22_anim_62_color_001.png", true);
+  assert.deepEqual(
+    main62?.map((a) => [a.f.slice(-7, -4), a.rot]),
+    Array.from({ length: 16 }, (_, i) => {
+      const step = i + 1;
+      return [String((step % 2) + 1).padStart(3, "0"), Math.trunc(-22.5 * step)];
+    }),
+  );
+  assert.deepEqual(
+    colour62?.map((a) => a.rot),
+    main62?.map((a) => a.rot),
+  );
+  const a63 = objectAnimationFor(2893, everyFrame);
+  assert.ok(a63);
+  assert.equal(a63.frames, 16);
+  assert.equal(a63.time, 0.033333);
+  const main63 = a63.framesFor("gj22_anim_63_002.png", false);
+  assert.deepEqual(
+    main63?.slice(0, 8).map((a) => [a.f.slice(-7, -4), a.rot]),
+    [
+      ["002", 0],
+      ["003", 0],
+      ["004", 0],
+      ["001", -90],
+      ["002", -90],
+      ["003", -90],
+      ["004", -90],
+      ["001", -180],
+    ],
+  );
+  const s = { ...timingOf(2892), interval: Math.fround(0.025) };
+  assert.equal(s.frames, 16);
+  assert.equal(syncedFrame(s, 0), 0);
+  assert.equal(syncedFrame(s, 0.05), 2);
+  assert.equal(syncedFrame(s, 0.4), 0, "sixteen steps round again");
 });
 
 test("1697 picks a random frame each clock step, never the same twice in a row", () => {

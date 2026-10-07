@@ -149,9 +149,8 @@ Goals 1 (physics), 2 (assets) and 4 (triggers) are done. Goal 3 (the renderer)
 draws the level, its colours, its moving parts, the player, the particles, the
 frame animations, the skeletal beasts, the text objects, the ground line, the
 middleground, the player's trail, the gradient layers and the screen effects.
-What it still owes — distortion centres that follow a target under Camera
-Rotate, the circle waves and the middleground's true height — is under
-"Known wrong" below.
+What it still owes — the circle waves and the middleground's true height — is
+under "Known wrong" below.
 
 Goal 5 is done. **The game is playable from its own page**: the entry page
 boots into a loading screen, a main menu, level select, the level with its
@@ -355,8 +354,7 @@ remaining gaps are counted by `npm run triggers`.
   landing puff and exhaust go over it, Custom Particles draw in their own
   layer, and the Screen effects switch in settings works. The distortions
   (shock waves, glitch, the blurs, bulge, pinch, pixelate, split screen) run
-  through the game's shader; centres that follow a target do not yet turn
-  with the camera.
+  through the game's shader, and their centres turn with Camera Rotate.
 - **The camera is the game's, and the corridor stands on the screen.** Zoom
   (1913), Static Camera (1914), Offset (1916), Camera Rotate (2015) and Camera
   Edge (2062) ease as the game's do, and the follow between them is
@@ -402,8 +400,10 @@ remaining gaps are counted by `npm run triggers`.
 - **The Gradient trigger is drawn.** Each layer (key 209) takes its sides
   from the main objects of keys 203-206, or its corners with key 207, and the
   view's edges for any it leaves out; its colour runs along the trigger's own
-  turn from key 21's channel to key 22's, normal or additive, over everything
-  else in its key-202 draw layer, and keys 208 and 508 take layers away.
+  turn from key 21's channel to key 22's, normal / additive / multiply /
+  invert, over everything else in its key-202 draw layer, and keys 208 and
+  508 take layers away. Screen-space layers (BG, MG, G, UI, Max) stay upright
+  under Camera Rotate; object layers still turn with the view.
   `render/gradients.ts` draws it as strips fine enough not to band.
 - **A layer draws in the game's batches, not by z order alone.**
   `GJBaseGameLayer::setupLayers` gives each of the nine z layers a batch per
@@ -681,86 +681,46 @@ as well as stopping the emitting.
 
 ### Known wrong, and why it is not fixed yet
 
-**Distortion centres do not turn with the camera.** Shock Wave, Shock Line,
-Lens Circle, Radial Blur, Bulge and Pinch place their centres in screen space
-as the game does for a fixed offset, but a follow target does not rotate with
-Camera Rotate the way the game's does.
+**Camera Mode corridor lock.** Free mode, grid snap, padding and a
+platformer's dead zone (55/27.5) are built (2925); the corridor lock itself is
+still the port's own approach rather than the game's eased static y.
 
-**A gradient on a screen-space draw layer turns with the view.** A layer on
-BG, MG, G, UI or Max turns with the camera, where the game's stays upright.
-Blends 0-3 (key 174) all draw.
-
-**Frame animations the table does not cover.** The special animations of
-1839-1842 (scale and opacity of the ring children) and 2892 and 2893 (a
-16-step spin) hold their resting frame. The platformer camera's own dead
-zone is not built either (Camera Mode, 2925).
-
-**Dash's ship tunnel at x 17745-18975.** The best run on the old band entered
-ship mode through a teleport onto the portal at (15765, 555), took the 390-690
-band from it, and died on the tunnel's floor pressed against that band's
-ceiling. The
-tunnel opens from about 416-614 at one end to 718-894 at the other, which no
-fixed band holds. Of the two leads, the band's source under a Static Camera is
-now the game's (above); the other, the two Area Move triggers on the tunnel's
-walls, turned out not to touch anything the player can reach: they centre on
-player 1 with a 90-unit dead zone. Dash is solved now (see "Macros"), and
-the area triggers are built (`src/triggers/area.ts`): Area Move, Rotate and
-Scale run every step with the game's falloff, easing and variance, Edit Area
-tweens them and Area Stop ends them. Fade and Tint are not built yet.
+**Dash's ship tunnel at x 17745-18975.** The tunnel opens from about 416-614
+at one end to 718-894 at the other, which no fixed band holds. Dash is solved
+(see "Macros"). Area Move/Rotate/Scale, Edit Area, Area Stop, Area Fade and
+Tint, and Enter Fade/Tint (3020/3021) are built.
 
 **Dash at 4 %: what the side-by-side still shows.** With the batches, the
-particles' opacity, the additive blend and the pause fixed, the frame matches
-the screenshot of the real game but for these:
-
-- The circle waves (`render/circleWaves.ts`) are drawn for the orbs, pads,
-  portals, pickups, the spider and deaths; the level-complete effects that
-  also make them are not drawn yet.
-- The spider portal's last particles linger. Once the Alpha trigger stops its
-  system, the sixteen or so already out live out their lives here, where the
-  real screenshot shows none half a second later. The port does what
-  `updateParticleOpacity` says — stop, and leave the rest — so the cause is
-  elsewhere. Leads: `GJBaseGameLayer::updateParticles` (IDA:456986ff), which
-  pools systems; `GameObject::setVisible` (IDA:164660-164700), which hides a
-  system's node outright; and whether a particle's life here means what
-  cocos's `timeToLive` does. The port also stops the system about 0.1 s
-  sooner than a straight fade through 50 would.
-- The rest is the run rather than the port: a smoke puff (2042) rolls a random
-  speed, so a different frame of it covers the fireball; the rock pile's
-  pulse comes from a touch trigger the screenshot's run never set off; and the
-  icon and its colours are the port's defaults.
+particles' opacity (including hiding at Alpha 0), the additive blend, the
+pause, the level-complete circle waves and the Ghost Trail dual gate fixed,
+what still differs from a real-game screenshot is mostly the run rather than
+the port: a smoke puff (2042) rolls a random speed; the rock pile's pulse
+comes from a touch trigger the screenshot's run never set off; and the icon
+and its colours are the port's defaults. B1 gradients now draw after the
+under-player particles when z ≥ 1.
 
 **Batches and particles: what is left.** Inside one batch, sprites with the
 same z order go in the level string's order; the game's is the order they
-last joined the batch, as they came on screen. An object's own system is
-reset the moment its object leaves the screen, where the game lets the
-particles out finish; keys 507 and 116 (no particles, no effects) are not read
-for those systems; and while a shader layer's range is 2-7 the game adds them
-to its other object layer (`claimParticle`, IDA:431679-431681), which is not
-done here. A B1 gradient with z order 1 or more sits over the player's own
-particles in the game and under them here. The streak, the CCMotionStreak
-ribbon, comes on for pads, orbs, gravity flips and the flying modes and goes
-off on the landing, as the game's does; the icon kit has no streak tab yet,
-so it is always the first of the seven, its points are laid each tick
-rather than each frame, and streak 6's repeating texture is stretched. The
-band's last
-segment, which the game draws as a general four-cornered polygon, is drawn
-as the nearest parallelogram, a sliver different under the player. A Ghost
-Trail turned on before a dual starts gives player 2 none in the game
-(`PlayLayer::toggleGhostEffect`, IDA:92269-92276) and one here. The rods (15-17)
-draw their ball from the fan table's child, where the game makes it an object
-of its own (37) in `PlayLayer::addObject` (IDA:90320-90345).
+last joined the batch, as they came on screen. While a shader layer's range
+is 2-7 the game adds newly claimed particle systems to its other object
+layer (`claimParticle`, IDA:431679-431681) so they parent under the shader
+capture tree; here band side is by z alone. The streak comes on for pads,
+orbs, gravity flips and the flying modes and goes off on the landing; the
+icon kit has no streak tab yet (always streak 1), its points are laid each
+tick rather than each frame, and streak 6's `enableRepeatMode(0.1)` still
+stretches once along the ribbon. The band's last segment is drawn as the
+nearest parallelogram rather than a general quad.
 
-**What the boomlings notes leave open.** A moving solid collides as a static
-block where it now stands, so a squeeze under one is approximate: the game's
-moving-object branch of the collision is one long function that waits for a
-port of the whole. Advanced Follow (3016) is not built; `npm run triggers`
-counts it. The area Fade and Tint are worked out once a step, where the game
-does it once a frame. Gravity (2066), Player Control (1932), Reverse (1917)
-and Gameplay Offset (2901) are built. The Event trigger hears the buttons,
-pickups, jumps, landings, robot boosts, orbs and pads, which covers every event
-the tower floors listen for, but not the portal and gravity events. Ice and the slope
-and boost slides still use a measured ramp. `data/ref/boomlings-notes.md`
-lists the rest under its status.
+**What the boomlings notes leave open.** Moving-solid crush is handled (sticky
+last-pass ceiling/floor). Scale-move delta and slope companion gates into that
+path are still approximate. Advanced Follow (3016) steers in modes 0–2 with
+delayed history; enter-effect group copies need `generateTargetGroups` wiring
+and stay partial. The Event trigger raises landings, hit-head, orbs, pads,
+jumps, robot/UFO/spider/swing/wave/dash, fall distance/speed, gravity, portals,
+teleport, coin, pickup, checkpoint and buttons; ship boost start/end are only
+named in the decompile. UI (3613) re-pins on mid-level re-fire but stays in
+the world draw list. Ice and the slope and boost slides still use a measured
+ramp. `data/ref/boomlings-notes.md` lists the rest under its status.
 
 ### Macros
 

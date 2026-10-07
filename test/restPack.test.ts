@@ -15,7 +15,8 @@ import { applyPersistentTrigger, persistentSpecOf, transferPersistent } from "..
 import { uiKeysOf, uiOffsetFromCentre } from "../src/triggers/uiLayout";
 import { statusOf } from "../src/triggers/registry";
 import { NO_INPUT, type PlayerState } from "../src/physics/types";
-import { emptyLevel, simOn, stepN } from "./levelKit";
+import { makeSim } from "./helpers";
+import { buildLevel, emptyLevel, makeHeader, simOn, stepN } from "./levelKit";
 
 function player(p: Partial<PlayerState>): PlayerState {
   return { x: 0, y: 15, mode: "cube", flipped: false, reversed: false, rotated: false, ...p } as PlayerState;
@@ -91,6 +92,35 @@ test("Background Effect Off and On flip visual.bgEffectHidden", () => {
   assert.equal(sim.triggers.visual.bgEffectHidden, true, "Off hid it");
   stepN(sim, NO_INPUT, 200);
   assert.equal(sim.triggers.visual.bgEffectHidden, false, "On cleared it");
+});
+
+test("Ghost Trail before a dual leaves player 2 without one", () => {
+  // Enable Ghost (32) before dual: only player 1. Enable while dual is on:
+  // both. Dual ending clears player 2's. [PlayLayer::toggleGhostEffect
+  //  :92269-92276]
+  const level = buildLevel(
+    [
+      { id: 1, x: 2985, y: 15 },
+      { id: 32, x: 40, y: 105 },
+      { id: 286, x: 150, y: 45 },
+      { id: 32, x: 400, y: 105 },
+      { id: 287, x: 700, y: 45 },
+    ],
+    makeHeader(),
+  );
+  const sim = makeSim(level, undefined, { start: { x: 15, y: 15, mode: "cube" } });
+  stepN(sim, NO_INPUT, 40);
+  assert.equal(sim.triggers.visual.ghostTrail, true);
+  assert.equal(sim.triggers.visual.ghostTrail2, false, "before dual");
+  while (!sim.state2 && !sim.state.dead) sim.step(NO_INPUT);
+  assert.ok(sim.state2, "dual started");
+  assert.equal(sim.triggers.visual.ghostTrail2, false, "dual does not copy player 1's trail");
+  while (sim.state.x < 420 && !sim.state.dead) sim.step(NO_INPUT);
+  assert.equal(sim.triggers.visual.ghostTrail, true);
+  assert.equal(sim.triggers.visual.ghostTrail2, true, "Enable while dual is on");
+  while (sim.state2 && !sim.state.dead) sim.step(NO_INPUT);
+  assert.equal(sim.triggers.visual.ghostTrail2, false, "solo clears player 2's");
+  assert.equal(sim.triggers.visual.ghostTrail, true, "player 1 keeps it");
 });
 
 test("Object Control fires and does nothing", () => {

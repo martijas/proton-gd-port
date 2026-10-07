@@ -27,6 +27,7 @@ import { UPLOAD_UNIT } from "../engine/gl/spriteBatch";
 import { fetchAsset } from "../assets/paths";
 import type { ShaderLayerFile } from "../assets/miscTypes";
 import { designSize } from "../ui/viewport";
+import { turnPoint } from "./camera";
 import { colourUniforms, newColourUniforms, TWEEN, type ColourUniforms, type ShaderState } from "../triggers/shaderState";
 
 /**
@@ -232,11 +233,20 @@ export interface BandScene {
   height: number;
   /** The camera's zoom, which the "relative" switches scale by. */
   zoom: number;
+  /**
+   * The camera's turn this frame, in degrees clockwise. Follow centres and
+   * fixed offsets turn about the screen middle by this, as
+   * ShaderLayer::updateEffectOffsets does with the saved camera rotation.
+   * [rotatePoint :656586-656608, updateEffectOffsets :656738-656756]
+   */
+  angle: number;
   /** A channel's colour as it stands now, 0..255, and whether it blends. */
   colourOf(channel: number): { r: number; g: number; b: number; blending?: boolean };
   /**
    * Where a shader target (-1 player 1, -2 player 2, a group) is on screen,
-   * 0..1 from the bottom left, or false for one that is not there.
+   * 0..1 from the bottom left with the view unturned, or false for one that
+   * is not there. The band turns that point about the screen middle by
+   * {@link BandScene.angle}.
    * [GJBaseGameLayer::positionForShaderTarget :424325-424361 →
    *  ShaderLayer::objectPosToShaderPos :656553-656570]
    */
@@ -244,6 +254,24 @@ export interface BandScene {
 }
 
 const scratchPoint: [number, number] = [0, 0];
+
+/**
+ * Turn a centre in width-units about the screen middle by the camera's angle,
+ * clockwise, matching how the level is drawn into the band.
+ * [rotatePoint :656586-656608 — the game's formula with the sign the sprite
+ *  shader uses for Camera Rotate]
+ */
+function turnCentre(x: number, y: number, angle: number, aspect: number, out: [number, number]): void {
+  const midY = 0.5 * aspect;
+  if (angle === 0) {
+    out[0] = x;
+    out[1] = y;
+    return;
+  }
+  const [dx, dy] = turnPoint(x - 0.5, y - midY, angle);
+  out[0] = dx + 0.5;
+  out[1] = dy + midY;
+}
 
 /** Centre from keys 290/291 (−1..1), or a follow target when one is on screen. */
 function centreOf(
@@ -256,11 +284,9 @@ function centreOf(
   out: [number, number],
 ): void {
   if (follow && target !== 0 && scene.targetOnScreen(target, scratchPoint)) {
-    out[0] = scratchPoint[0];
-    out[1] = scratchPoint[1] * aspect;
+    turnCentre(scratchPoint[0], scratchPoint[1] * aspect, scene.angle, aspect, out);
   } else {
-    out[0] = 0.5 + 0.5 * x;
-    out[1] = (0.5 + 0.5 * y) * aspect;
+    turnCentre(0.5 + 0.5 * x, (0.5 + 0.5 * y) * aspect, scene.angle, aspect, out);
   }
 }
 
@@ -322,11 +348,9 @@ export function bandUniforms(st: ShaderState, scene: BandScene, out: BandUniform
   out.lensStart = Math.max(0, end - Math.max(0, v[TWEEN.LENS_FADE]));
   out.lensEnd = Math.max(0, end);
   if (s.lensTarget !== 0 && scene.targetOnScreen(s.lensTarget, scratchPoint)) {
-    out.lensOrigin[0] = scratchPoint[0];
-    out.lensOrigin[1] = scratchPoint[1] * aspect;
+    turnCentre(scratchPoint[0], scratchPoint[1] * aspect, scene.angle, aspect, out.lensOrigin);
   } else {
-    out.lensOrigin[0] = 0.5 + 0.5 * v[TWEEN.LENS_X];
-    out.lensOrigin[1] = (0.5 + 0.5 * v[TWEEN.LENS_Y]) * aspect;
+    turnCentre(0.5 + 0.5 * v[TWEEN.LENS_X], (0.5 + 0.5 * v[TWEEN.LENS_Y]) * aspect, scene.angle, aspect, out.lensOrigin);
   }
   if (s.lensTint > 0) {
     const c = scene.colourOf(s.lensTint);
@@ -412,9 +436,18 @@ export function bandUniforms(st: ShaderState, scene: BandScene, out: BandUniform
     out.shockLineDual = s.shockLineDual;
     out.shockLineMaxDistVal = v[TWEEN.SL_DIST] === 0 ? 0 : 1 / (v[TWEEN.SL_DIST] * 0.5 * scale);
     if ((s.shockLineFollow || s.shockLineMoving) && s.shockLineTarget !== 0 && scene.targetOnScreen(s.shockLineTarget, scratchPoint)) {
-      out.shockLineCenter = s.shockLineAxis ? scratchPoint[1] * aspect : scratchPoint[0];
+      turnCentre(scratchPoint[0], scratchPoint[1] * aspect, scene.angle, aspect, scratchPoint);
+      out.shockLineCenter = s.shockLineAxis ? scratchPoint[1] : scratchPoint[0];
     } else {
-      out.shockLineCenter = 0.5 + 0.5 * v[TWEEN.SL_POS];
+      // A line's fixed centre is one axis; turn it as a point on that axis through the middle.
+      turnCentre(
+        s.shockLineAxis ? 0.5 : 0.5 + 0.5 * v[TWEEN.SL_POS],
+        s.shockLineAxis ? (0.5 + 0.5 * v[TWEEN.SL_POS]) * aspect : 0.5 * aspect,
+        scene.angle,
+        aspect,
+        scratchPoint,
+      );
+      out.shockLineCenter = s.shockLineAxis ? scratchPoint[1] : scratchPoint[0];
     }
   } else {
     out.shockLineTime = 0;
@@ -457,9 +490,11 @@ export function bandUniforms(st: ShaderState, scene: BandScene, out: BandUniform
     out.cGLineThick = line;
     out.cGLineStrength = v[TWEEN.CG_LINE_STRENGTH] * 0.05;
     if (s.cgFollow && scene.targetOnScreen(-1, scratchPoint)) {
+      turnCentre(scratchPoint[0], scratchPoint[1] * aspect, scene.angle, aspect, scratchPoint);
       out.cGYOffset = scratchPoint[1] * out.textureScaleInv[1];
     } else {
-      out.cGYOffset = 0.5 * aspect * out.textureScaleInv[1];
+      turnCentre(0.5, 0.5 * aspect, scene.angle, aspect, scratchPoint);
+      out.cGYOffset = scratchPoint[1] * out.textureScaleInv[1];
     }
   } else {
     out.cGRGBOffset = 0;

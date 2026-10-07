@@ -140,6 +140,56 @@ test("a Follow follows its group's parent, and nothing in a group of several wit
   near(run(false), 0, "without one");
 });
 
+test("a non-uniform Scale about a centre shears a rotated group's transform", () => {
+  // Scales run before rotates in a step, so a Scale and a Rotate that both
+  // fire at once scale first: (330,600) → (360,600), then +90° CW about C →
+  // (300,540). The composed affine is sheared; the game writes that back as
+  // each object's rotation X/Y, the port keeps it in the group matrix.
+  // [gdp processTransformActions :440265-440490; processMoveActionsStep
+  //  :469394-469398]
+  const { level, at } = withGroups(
+    [
+      { id: 1346, x: 0, y: 300, props: { 51: "2", 71: "3", 68: "90", 10: "0" } },
+      { id: 2067, x: 1, y: 300, props: { 51: "2", 71: "3", 150: "2", 151: "1", 10: "0" } },
+      { id: 1, x: 300, y: 600 },
+      { id: 1, x: 330, y: 600 },
+    ],
+    { 2: [3], 3: [2] },
+  );
+  const sim = simOn(level);
+  stepN(sim, NO_INPUT, 4);
+  const m = new Float64Array(9);
+  assert.equal(sim.triggers.objectTransform(at(3), m), true);
+  const [x, y] = centre(sim, at(3));
+  near(x, 300, "x");
+  near(y, 540, "y");
+  assert.ok(Math.abs(Math.abs(m[0]) - Math.abs(m[3])) > 1e-6 || Math.abs(m[1]) + Math.abs(m[2]) > 1e-6, "sheared");
+});
+
+test("a dynamic aim Rotate closes key 403's share of the remaining angle each step", () => {
+  // Group 2's block at (400, 600) aims at group 3 at (400, 700): a quarter
+  // turn counter-clockwise from 0. With key 403 = 2, the first real step
+  // takes half of that (45°). Absent, or 0, it takes all of it.
+  // [gdp processDynamicObjectActions :445487-445490; m_dynamicModeEasing]
+  const run = (props: Record<number, string>): number => {
+    const { level } = withGroups(
+      [
+        { id: 1346, x: 0, y: 300, props: { 51: "2", 71: "2", 401: "3", 397: "1", 10: "-1", ...props } },
+        { id: 1, x: 400, y: 600 },
+        { id: 1, x: 400, y: 700 },
+      ],
+      { 1: [2], 2: [3] },
+    );
+    const sim = simOn(level);
+    // Fresh tick does nothing; the next applies the first share.
+    stepN(sim, NO_INPUT, 2);
+    return sim.triggers.groupSpinOf(2);
+  };
+  near(run({}), -90, "full gap when 403 is absent");
+  near(run({ 403: "0" }), -90, "full gap when 403 is below 1");
+  near(run({ 403: "2" }), -45, "half the gap when 403 is 2");
+});
+
 test("a rotate turns about where its centre is now", () => {
   // Block C (group 3) moves up 150; then group 2, a block 30 to C's right,
   // turns half a turn about C: it ends 30 to C's left and 150 above C. The
@@ -196,6 +246,29 @@ test("a rotate turns about its centre before this step's moves, whichever was ma
 });
 
 // --- Move target mode --------------------------------------------------------
+
+test("a Move's Small Step key (393) does not change the offset", () => {
+  // Key 393 is parsed and saved but never read by any move path in 2.206.
+  // [gdp trigger-semantics.md; EffectGameObject+1336 reads only at save/getter]
+  const run = (props: Record<number, string>): [number, number] => {
+    const { level, at } = withGroups(
+      [
+        { id: 901, x: 0, y: 300, props: { 51: "2", 28: "60", 29: "90", 10: "0", ...props } },
+        { id: 1, x: 300, y: 600 },
+      ],
+      { 1: [2] },
+    );
+    const sim = simOn(level);
+    stepN(sim, NO_INPUT, 2);
+    return centre(sim, at(1));
+  };
+  const plain = run({});
+  const stepped = run({ 393: "1" });
+  near(plain[0], 360, "plain x");
+  near(plain[1], 690, "plain y");
+  near(stepped[0], plain[0], "with 393, x");
+  near(stepped[1], plain[1], "with 393, y");
+});
 
 test("a target-mode Move measures from where both ends are now", () => {
   // Block T (group 3) moves up 150; half a second later a target-mode Move

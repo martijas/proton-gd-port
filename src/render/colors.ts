@@ -340,6 +340,11 @@ export interface ColorFade {
   current: Rgb;
   currentOpacity: number;
   finished: boolean;
+  /** The colour trigger that started it, and its control id, for Stop. */
+  trigger?: number;
+  controlId?: number;
+  /** Paused by a Stop trigger: it holds where it is. */
+  paused?: boolean;
 }
 
 /** One pulse, on a channel or on a group. */
@@ -420,6 +425,9 @@ export interface ColorChange {
   copyId: number;
   copyHsv: HsvShift | null;
   copyOpacity: boolean;
+  /** The colour trigger that started it, and its control id, for Stop. */
+  trigger?: number;
+  controlId?: number;
 }
 
 export interface ColorTableOptions {
@@ -579,6 +587,8 @@ export class ColorTable implements ColorSource {
       current: from,
       currentOpacity: this.opacity[id],
       finished: false,
+      trigger: change.trigger,
+      controlId: change.controlId,
     };
     this.fades = this.fades.filter((f) => f.channel !== id);
     this.fades.push(fade);
@@ -636,6 +646,21 @@ export class ColorTable implements ColorSource {
     }
   }
 
+  /**
+   * Stop (mode 0), Pause (1) or Resume (2) on the colour fades `hit` picks.
+   * A stopped fade finishes where it stands; a paused one holds until resumed.
+   * [gdp GJEffectManager::controlActionsForTrigger :484919-484938
+   *  (ColorAction +52 finished / +53 paused, matched by +124 unique id)]
+   */
+  controlFades(hit: (f: ColorFade) => boolean, mode: number): void {
+    if (this.fades.length === 0) return;
+    for (const f of this.fades) {
+      if (!hit(f) || f.finished) continue;
+      if (mode === 0) f.finished = true;
+      else f.paused = mode === 1;
+    }
+  }
+
   /** Drops every pulse, as a respawn does. [gdp removeAllPulseActions :475853] */
   clearPulses(): void {
     this.channelPulses = [];
@@ -669,7 +694,7 @@ export class ColorTable implements ColorSource {
   }
 
   private stepFade(fade: ColorFade, dt: number): void {
-    if (fade.finished) return;
+    if (fade.finished || fade.paused) return;
     fade.elapsed += dt;
     const t = fade.elapsed;
     if (t >= fade.duration) {

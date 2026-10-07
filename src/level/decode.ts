@@ -196,6 +196,13 @@ export const OBJECT_KEY = {
   /** Hide (+1106 → +855 in play). */
   hide: 135,
   /**
+   * No effects (+900): circles, shine, and an object's own particle system.
+   * [objectFromVector :184123-184126; createAndAddParticle is key 507]
+   */
+  noEffects: 116,
+  /** No particles (+901): createAndAddParticle returns without making one. [:184127-184130, :167750] */
+  noParticles: 507,
+  /**
    * A Custom Particles object's colours from its object: key 146 for the
    * start and end colours (+669), key 147 for the uniform ramp (+1536).
    * [ParticleGameObject::customObjectSetup :306001-306008]

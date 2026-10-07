@@ -31,8 +31,8 @@ still not done, by entry:
   measured ramp.
 - #2: Dash's Item Compare #17924 waits on the Touch trigger (1595), which is not built.
 - #4: the Secret Hollow's four Follows on group 563 copy two Advanced Follows (3016), not built.
-- #7: moving solids still collide as static blocks where they now are; the moving-object branch of
-  `collidedWithObjectInternal` waits for a port of the whole function.
+- #7: moving-solid crush/landing is ported (sticky prev ceiling/floor for the deep head path);
+  `getScalePosDelta` and the slope companion gates into the special paths are still approximate.
 - #8: the sim raises the button, coin and pickup events, not the landings, robot boosts, orbs and
   pads the tower floors also listen for.
 - #13: Show Time (gv 0145), the platformer's HUD label, is not built.
@@ -287,15 +287,16 @@ H-block cube's 10 is, or one raised by the slope extra); with it set the block's
 ceiling, even landed on (a thin block crossed in one step), and a breakable (type 21) or passable
 (key 134) block then records nothing (IDA:151947-151980, 152155-152204). In rotated gameplay each object is turned about where the
 player stands as its collision begins (IDA:154412-154413), so the stored floor and ceiling carry the
-player's own movement between them. Still approximate: a moving solid that crushes the player, since
-the port has no moving-object branch of `collidedWithObjectInternal` (IDA:151851-151910,
-152058-152110) and treats a moved block as static where it now is. That branch is not a bolt-on: the
-object's move since its last position (+1052, stamped only in a step it moves, so stale once it
-stops) widens the snap threshold (IDA:151541-151620), feeds the player's ground-object velocity
-(+1328, and +1336 a step later, which `postCollision` turns into a launch when a fast platform
-stops, IDA:159068-159104), and gates both landing branches and the head-hit branch; the port's
-`collideSolid` is a condensed reconstruction that does not follow that structure, so it waits for a
-port of the whole function. The platformer's second test,
+player's own movement between them. **Moving-solid crush fixed 2026-10-06** (`test/squeeze.test.ts`):
+`collideSolid` already widened the snap threshold from the object's move since lastPosition (+1052),
+fed +1328/+1336, and ran the LABEL_300 / LABEL_221 carry and pin paths (IDA:151538-151627,
+151851-151910, 152058-152110). What was missing for crush was the deep head-hit sticky id: once a
+block crosses the snap threshold, upright gravity still meets last pass's ceiling (a1[319] /
+`prevCeilingObj`) and flipped gravity last pass's floor (a1[318] / `prevFloorObj`), from
+`storeCollision` → `resetCollisionLog(false)` (IDA:142397-142458, 152209-152213). Without that the
+ceiling fell through the outer box into the inner hitbox and the death named an object. Still
+approximate: `getScalePosDelta` is not stripped from the move (IDA:151559-151573), and the slope
+companion alternates (`v50 && v170` / `v172`) into the special paths are omitted. The platformer's second test,
 between walls (below), was left out of the first fix and added in review. The collision-log checks
 after each test (IDA:158682-158715, 158831-158845) were added on 2026-09-29 (`Player.logTop` and the
 rest): they destroy a player one object has met both as a floor and a ceiling, or in a platformer as
@@ -324,11 +325,12 @@ update began before the death (LABEL_303, IDA:158694-158711).
     the first few hundred units, any object not left of the player shuts it. In rotated gameplay
     the object is turned a quarter about the player (x′ = x − dy), so the walls it stores run the
     other way from the port's mirror, and the sides trade.
-- Port: kA31 is never read; nothing records both contacts (`sim.ts:1255-1256`,
-  `collision.ts:807-936`), and platformer solids never kill.
+- Port: kA31 / platformer squeeze, wall squeeze, collision-log crush, and moving-solid deep head
+  sticky (`prevCeilingObj` / `prevFloorObj`) are in. Remaining #7 gaps: `getScalePosDelta` and the
+  slope companion alternates into LABEL_300 / LABEL_221.
 - Levels: live in Dash (kA31 = 1) and all four tower floors (platformer). No reachable static pinch
   site and no squeeze pass in the saved runs (Dash 35.6 %, 5001 38.4 %, 5002 8.4 %, 5003 4.7 %,
-  5004 10.9 %). The risk is moving solids in the unreplayed parts (Dash has 358 moving objects).
+  5004 10.9 %). Moving-solid crush in unreplayed parts is the path this fix covers.
 
 #### 8. Pickup trigger (1817) always adds, and defaults to 1
 Confirmed; no effect today. **Fixed 2026-09-28.**

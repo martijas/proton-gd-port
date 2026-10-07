@@ -13,7 +13,8 @@
 //     from the object's position less +704 — half its width beyond one block
 //     (getObjectTextureRect) — which is its centre up to a block wide and
 //     leads a wider object's centre by the rest. The only codes that do not
-//     fade are "none" (1915) and the custom effects (3017-3021).
+//     fade are "none" (1915) and the custom effects (3017-3021): those apply
+//     their own opacity and colour from PlayLayer::applyCustomEnterEffect.
 //   - The slides travel 100 units, not 60, and the "big to small" scale starts
 //     at 1.75, not 2.
 //   - With no trigger in force at all, the default is code -2: the fade and
@@ -24,15 +25,19 @@
 //     trigger, and an object takes the entry for its own channel (key 343)
 //     as it starts to come in — so the objects already on their way in when
 //     the player crosses it keep the old one. The draw list keeps that latch
-//     per object; the runtime keeps the tables (VisualState.enter).
+//     per object; the runtime keeps the tables (VisualState.enter). A custom
+//     trigger (3017-3021) also pushes an EnterEffectInstance onto that
+//     channel's custom list; Enter Fade (3020) and Enter Tint (3021) are the
+//     ones this port draws.
 //
 // The game keeps the codes as small negatives; they are stored here as their
 // magnitudes, a byte each in the runtime's per-channel tables and in the draw
 // list's per-object latches.
 // [gdp PlayLayer::applyEnterEffect, gd-ida-decomp.cpp:91072-91300;
-//  getRelativeModNew :91043-91055; the fade in PlayLayer::updateVisibility
-//  :96040-96066; the id table and the per-channel tables in
-//  GJBaseGameLayer::updateActiveEnterEffect :467525-467625]
+//  applyCustomEnterEffect :90645-91026; getRelativeModNew :91043-91055; the
+//  fade in PlayLayer::updateVisibility :96040-96066; the id table and the
+//  per-channel tables in GJBaseGameLayer::updateActiveEnterEffect
+//  :467525-467625]
 
 /** How far inside the edge an object is fully in, in units. */
 export const ENTER_BAND = 70;
@@ -62,7 +67,11 @@ export const ENTER = {
   verticalFar: 13,
   /** Nothing at all, not even the fade: id 1915. */
   none: 14,
-  /** The 2.2 custom enter triggers (3017-3021), whose effects this port does not draw yet. */
+  /**
+   * The 2.2 custom enter triggers (3017-3021). Enter Fade (3020) and Enter Tint
+   * (3021) are drawn from the channel's custom list; Move/Rotate/Scale (3017-3019)
+   * are not placed in the official levels and leave the object at rest.
+   */
   custom: 15,
 } as const;
 
@@ -198,4 +207,34 @@ function roll(seed: number): number {
 /** Progress across the band, from a distance inside the edge. */
 export function enterProgress(distanceInside: number): number {
   return Math.min(1, Math.max(0, distanceInside / ENTER_BAND));
+}
+
+/**
+ * How far into a custom enter effect an object is: 0 at the screen edge
+ * (plus key 220), 1 a key-222 length inside, with key 282's dead zone. Coming
+ * in is measured from the right edge; going out, from the left. The ± halves
+ * are already folded into `offset` and `length` by the caller.
+ * [gdp PlayLayer::applyCustomEnterEffect :90773-90817]
+ */
+export function customEnterProgress(
+  x: number,
+  entering: boolean,
+  edge: number,
+  offset: number,
+  length: number,
+  deadzone: number,
+): number {
+  const signed = entering ? -1 : 1;
+  const dist = (x - (edge + offset)) * signed;
+  const len = Math.trunc(length);
+  if (len === 0) return 1;
+  const ratio = dist / len;
+  let v: number;
+  if (deadzone === 0) v = ratio > 0 ? ratio : 0;
+  else {
+    v = (ratio - deadzone) / (1 - deadzone);
+    if (v < 0) v = 0;
+  }
+  if (v >= 1 || Number.isNaN(v)) return 1;
+  return Math.fround(v);
 }

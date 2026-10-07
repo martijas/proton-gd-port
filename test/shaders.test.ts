@@ -492,6 +492,7 @@ function scene(over: Partial<BandScene> = {}): BandScene {
     width: 1920,
     height: 1080,
     zoom: 1,
+    angle: 0,
     colourOf: (id) => (id === 5 ? { r: 255, g: 0, b: 0, blending: true } : { r: 0, g: 0, b: 255, blending: false }),
     targetOnScreen: () => false,
     ...over,
@@ -554,6 +555,50 @@ test("a shock wave stores invert/follow and draws a non-zero time uniform", () =
   assert.ok(u.shockWaveStrength > 0);
 });
 
+test("follow centres turn about the screen middle with Camera Rotate", () => {
+  // [updateEffectOffsets :656738-656756, rotatePoint :656586-656608]
+  const st = createShaderState();
+  const aspect = 0.5625;
+  const at = (t: number, out: [number, number]) =>
+    t === -1 ? ((out[0] = 0.75), (out[1] = 0.5), true) : false;
+  fire(st, 2905, { 176: 1, 188: 1, 138: 1 });
+  stepShaderState(st, 0.1);
+  let u = bandUniforms(st, scene({ angle: 90, targetOnScreen: at }));
+  // (0.75, 0.5·aspect) about (0.5, 0.5·aspect), 90° clockwise → (0.5, 0.5·aspect − 0.25)
+  nearAll(u.shockWaveCenter, [0.5, 0.5 * aspect - 0.25], "shock wave, 90°");
+
+  fire(st, 2907, { 176: 1, 188: 1, 138: 1 });
+  stepShaderState(st, 0.1);
+  u = bandUniforms(st, scene({ angle: 90, targetOnScreen: at }));
+  near(u.shockLineCenter, 0.5, "shock line x, 90°");
+
+  fire(st, 2913, { 176: 1, 179: 0.2, 138: 1 });
+  u = bandUniforms(st, scene({ angle: 90, targetOnScreen: at }));
+  nearAll(u.lensOrigin, [0.5, 0.5 * aspect - 0.25], "lens circle, 90°");
+
+  fire(st, 2914, { 179: 1, 188: 1, 138: 1 });
+  u = bandUniforms(st, scene({ angle: -90, targetOnScreen: at }));
+  nearAll(u.radialBlurCenter, [0.5, 0.5 * aspect + 0.25], "radial blur, −90°");
+
+  fire(st, 2916, { 176: 1, 180: 40, 188: 1, 138: 1 });
+  u = bandUniforms(st, scene({ angle: 180, targetOnScreen: at }));
+  nearAll(u.bulgeOrigin, [0.25, 0.5 * aspect], "bulge, 180°");
+
+  fire(st, 2917, { 188: 1, 180: 1, 138: 1, 190: 1 });
+  u = bandUniforms(st, scene({ angle: 90, targetOnScreen: at }));
+  nearAll(u.pinchCenter, [0.5, 0.5 * aspect - 0.25], "pinch, 90°");
+});
+
+test("a fixed centre turns about the screen middle with Camera Rotate", () => {
+  const st = createShaderState();
+  const aspect = 0.5625;
+  fire(st, 2905, { 176: 1, 290: 1, 291: 0 });
+  stepShaderState(st, 0.1);
+  const u = bandUniforms(st, scene({ angle: 90 }));
+  // Right edge (1, 0.5·aspect) → 90° clockwise about the middle → (0.5, 0.5·aspect − 0.5)
+  nearAll(u.shockWaveCenter, [0.5, 0.5 * aspect - 0.5], "fixed offset, 90°");
+});
+
 test("bulge, split screen and pixelate reach the band uniforms", () => {
   const st = createShaderState();
   fire(st, 2916, { 176: 1, 180: 40, 290: 0.5, 188: 1, 138: 1 });
@@ -603,13 +648,8 @@ test("a checkpoint keeps the effects as they were, not as they became", () => {
 });
 
 test("the shader triggers are done where the game's arithmetic is reproduced", () => {
-  for (const id of [2904, 2909, 2910, 2911, 2912, 2915, 2919, 2920, 2921, 2922, 2923, 2924]) {
+  for (const id of [2904, 2905, 2907, 2909, 2910, 2911, 2912, 2913, 2914, 2915, 2916, 2917, 2919, 2920, 2921, 2922, 2923, 2924]) {
     assert.equal(statusOf(id).status, "done", `${id}`);
-  }
-  for (const id of [2905, 2907, 2913, 2914, 2916, 2917]) {
-    const entry = statusOf(id);
-    assert.equal(entry.status, "partial", `${id}`);
-    assert.ok(entry.note, `${id} says what is missing`);
   }
   assert.equal(SHADER_TRIGGER_IDS.has(2906) || SHADER_TRIGGER_IDS.has(2908) || SHADER_TRIGGER_IDS.has(2918), false);
 });

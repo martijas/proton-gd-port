@@ -23,15 +23,6 @@
 // over the whole level.
 //
 // Callers not made yet, each waiting on what it belongs to:
-// - the end of a level (PlayLayer::showCompleteEffect → spawnCircle :88772,
-//   showCompleteText :88664 and :88681, levelComplete :92873, spawnFirework
-//   :87251; PlayerObject::playCompleteEffect :681486-681512), which the port
-//   does not draw. In the exe: 0x1403a87c9 (10 to 250 in 0.5 s, eased out,
-//   a 4-pixel ring), 0x1403a8cac and 0x1403a8d5a (showCompleteText, eased
-//   out, 4 pixels), 0x1403abf37 and 0x1403ac1eb (spawnCircle, fading in,
-//   eased out, 4 pixels), 0x140384375, 0x1403843e8 and 0x140384469
-//   (playCompleteEffect: 20 to 80 in 0.72 s, 30 to 50 in 0.84 s, 30 to 20
-//   in 0.96 s, all eased out).
 // - GJBaseGameLayer::checkRepellPlayer :430322-430395, which the simulation
 //   does not run: two dual balls of one gravity, closer than their half
 //   sizes and 5, turn one over, a physics change of its own. Its 4-pixel
@@ -42,6 +33,7 @@
 //   icon over the ring at z 100, fading out, shrinking to a tenth and
 //   turning half a turn in 0.4 s: only the ring, which follows its path, is
 //   drawn.
+// Level-complete circles are made (completeEffectWaves → scene.spawnCompleteWaves).
 //
 // [gdp CCCircleWave::baseSetup :59911-59925, init :59939-60030 (the tweens),
 //  draw :59683-59780, updateTweenAction :59826-59870, followObject
@@ -479,6 +471,64 @@ export function spawnEffectWaves(which: 1 | 2, x: number, y: number, ctx: WaveCo
       y,
       follow: { kind: "player", which },
     });
+  }
+  return out;
+}
+
+/**
+ * How far the level-complete spawnCircle ring grows on the screen, matching
+ * the exe's fixed 250 rather than getScreenRight (which varies with the
+ * window). [exe VA 0x1403a87c9; showCompleteText's second ring :88681]
+ */
+const COMPLETE_RING_TO = 250;
+/** playCompleteEffect's mid and last rings' opacity mod (+300 = 0.7). [exe 0x1403843e8] */
+const COMPLETE_PLAYER_OPACITY = 0.7;
+
+/**
+ * The circles at the end of a level: showCompleteEffect's and showCompleteText's
+ * rings at the end position, and each player's playCompleteEffect discs.
+ * Low Detail Mode leaves none of them out. Key 460 (LevelEnd.effects false)
+ * skips the call.
+ * [gdp PlayLayer::showCompleteEffect → spawnCircle :88772, showCompleteText
+ *  :88664 and :88681; levelComplete :92873 → PlayerObject::playCompleteEffect
+ *  :681486-681512; exe VAs 0x1403a87c9, 0x1403a8cac, 0x1403a8d5a, 0x1403abf37,
+ *  0x140384375, 0x1403843e8, 0x140384469]
+ */
+export function completeEffectWaves(
+  endX: number,
+  endY: number,
+  players: readonly { which: 1 | 2; x: number; y: number }[],
+  ctx: WaveContext,
+): WaveSpawn[] {
+  const c1 = ctx.playerColour(1, 1);
+  const out: WaveSpawn[] = [
+    // spawnCircle from showCompleteEffect: 10 → 250 in 0.5 s, fading in, eased
+    // out, a 4-pixel ring at the end position.
+    fixed(spec(10, COMPLETE_RING_TO, 0.5, true, true, c1, { outline: true, lineWidth: 4 }), endX, endY),
+    // showCompleteText: 10 → screen (250) in 0.8 s, eased out, 4-pixel ring.
+    fixed(spec(10, COMPLETE_RING_TO, 0.8, false, true, c1, { outline: true, lineWidth: 4 }), endX, endY),
+    // showCompleteText's second: 10 → 250 in 0.8 s, eased out, 4-pixel ring.
+    fixed(spec(10, COMPLETE_RING_TO, 0.8, false, true, c1, { outline: true, lineWidth: 4 }), endX, endY),
+  ];
+  for (const p of players) {
+    const colour1 = ctx.playerColour(p.which, 1);
+    const colour2 = ctx.playerColour(p.which, 2);
+    // playCompleteEffect: three discs on the player, eased out.
+    out.push(
+      { spec: spec(20, 80, 0.72, false, true, colour1), x: p.x, y: p.y, follow: { kind: "player", which: p.which } },
+      {
+        spec: spec(30, 50, 0.84, false, true, colour2, { opacityMod: COMPLETE_PLAYER_OPACITY, z: 1000 }),
+        x: p.x,
+        y: p.y,
+        follow: { kind: "player", which: p.which },
+      },
+      {
+        spec: spec(30, 20, 0.96, false, true, colour1, { opacityMod: COMPLETE_PLAYER_OPACITY, z: 1000 }),
+        x: p.x,
+        y: p.y,
+        follow: { kind: "player", which: p.which },
+      },
+    );
   }
   return out;
 }

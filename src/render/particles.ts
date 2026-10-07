@@ -1211,6 +1211,11 @@ export class ParticleField {
    *  0x140198dd5-0x140198ef8); GameObject::claimParticle :167570ff (what the
    *  object sets on the system as it comes on screen); setVisible
    *  :164660-164690]
+   *
+   * Not transcribed: when a shader is active and its layerMin is 2–7,
+   * claimParticle parents the system on PlayLayer's other object layer
+   * (+2512) instead of +2508 (IDA:431689-431692). Band side here is by z
+   * alone; that cocos reparent is left open.
    */
   addBuiltIn(
     level: Level,
@@ -1224,7 +1229,17 @@ export class ParticleField {
     for (const object of level.objects) {
       const record = records(object.id);
       const p = record?.pt;
-      if (!record || !p || objectFlag(object, OBJECT_KEY.hide)) continue;
+      // Key 135 never claims; keys 116 and 507 skip the system's create.
+      // [createAndAddParticle :167750 (+901); +900 is no effects]
+      if (
+        !record ||
+        !p ||
+        objectFlag(object, OBJECT_KEY.hide) ||
+        objectFlag(object, OBJECT_KEY.noEffects) ||
+        objectFlag(object, OBJECT_KEY.noParticles)
+      ) {
+        continue;
+      }
       const found = effect(p.e);
       if (!found) continue;
       const base = found.def;
@@ -1346,8 +1361,13 @@ export class ParticleField {
     const y0 = view.y0 - EMITTER_MARGIN;
     const y1 = view.y1 + EMITTER_MARGIN;
     if (scene.levelTime < this.lastTime) {
-      // A respawn: everything starts over, and the Animate triggers that
-      // fired before the point it went back to are not started again.
+      // A practice respawn: every object's resetObject clears +1237 via
+      // waitForAnimationTrigger, and loadActiveSaveObjects never puts it
+      // back, so key-123 emitters wait for a new Animate. Match that by
+      // starting over and treating the checkpoint's Animate count as already
+      // seen. [gdp EnhancedGameObject::resetObject :170066-170067;
+      //  waitForAnimationTrigger :620467; loadActiveSaveObjects :92150-92183;
+      //  ParticleGameObject::resetObject :302774-302791]
       this.reset();
       for (const e of this.placed) e.animations = scene.animationsOf(e.object.index);
     }
@@ -1374,14 +1394,33 @@ export class ParticleField {
         continue;
       }
       const scale = this.follow(e, scene);
-      // Off screen, or switched off by a group toggle: either way the object
-      // is not shown and hands its system back. [GJBaseGameLayer::
-      //  preUpdateVisibility :452902]
+      // Switched off by a group toggle: the object is not shown and hands its
+      // system back. Off screen, the game lets particles already out finish
+      // (stop emitting, keep stepping); only a toggle clears them.
+      // [GJBaseGameLayer::preUpdateVisibility :452902; GameObject::setVisible
+      //  :164674-164690 unclaims on hide]
       const off = scene.objectDisabled ? scene.objectDisabled(e.object.index) : false;
-      if (off || emitter.x < x0 || emitter.x > x1 || emitter.y < y0 || emitter.y > y1) {
+      const offScreen = emitter.x < x0 || emitter.x > x1 || emitter.y < y0 || emitter.y > y1;
+      if (off) {
         if (e.claimed) {
           emitter.reset();
           e.claimed = false;
+        }
+        continue;
+      }
+      if (offScreen) {
+        if (e.claimed) {
+          // Stop new particles; the ones out finish where they are.
+          emitter.setEmitting(false);
+          budget = emitter.step(dt, budget);
+          if (emitter.count === 0) {
+            e.claimed = false;
+            continue;
+          }
+          if (at + emitter.count > MAX_LIVE) break;
+          const from = at;
+          at = emitter.bake(this.data, this.bytes, at, e.quad);
+          if (at > from) this.counted(e, from, at);
         }
         continue;
       }
@@ -1395,11 +1434,16 @@ export class ParticleField {
         }
         // The object's opacity, set on it every frame it is shown, starts and
         // stops its system; the particles out keep their own colours and
-        // finish. [GameObject::setOpacity :167614-167703 → vfunc 820,
-        //  updateParticleOpacity :165124-165150; the vtable's 812 is
-        //  blendModeChanged and 816 updateParticleColor, :169322, :165366]
-        emitter.setEmitting(builtInOpacity(e.object, e.builtIn.record, scene) > PARTICLE_OPACITY_CUTOFF);
+        // finish. At opacity 0 the system's node is not drawn (setVisible on
+        // the particle system), so nothing is baked — that is why Dash's
+        // spider portal shows none half a second after Alpha reaches 0,
+        // while stop-at-50 alone would leave them finishing on screen.
+        // [GameObject::setOpacity :167614-167703 → vfunc 820,
+        //  updateParticleOpacity :165124-165150; setVisible :164681]
+        const opacity = builtInOpacity(e.object, e.builtIn.record, scene);
+        emitter.setEmitting(opacity > PARTICLE_OPACITY_CUTOFF);
         budget = emitter.step(dt, budget);
+        if (opacity === 0) continue;
         if (at + emitter.count > MAX_LIVE) break;
         const from = at;
         at = emitter.bake(this.data, this.bytes, at, e.quad);

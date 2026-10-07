@@ -61,6 +61,7 @@ export interface AdvFollowSnapshot {
   physics: Map<number, GameObjectPhysics>;
   dirtySort: boolean;
   nextOrdinal: number;
+  history: PositionHistorySnapshot;
 }
 
 export interface AdvFollowHost {
@@ -75,9 +76,135 @@ export interface AdvFollowHost {
   specOf(index: number): TriggerSpec | undefined;
   player1(): [number, number];
   player2(): [number, number] | null;
+  /** Point for followed target -3 (layer+852); absent → (0,0). */
+  followPoint?(): [number, number];
+  /**
+   * Enter-effect group-copy slot for `getSpecialKey(group, key280, key281)`,
+   * or 0 when the map has no entry (one plain-group pass).
+   * [gdp processAdvancedFollowAction :453786-453818]
+   */
+  enterCopySlot?(specialKey: number): number;
+  /**
+   * Members of enter-effect copy `slot` for pass `pass` (0 or 1). Absent or
+   * empty falls back to the plain follower group on pass 0.
+   */
+  copyGroupMembers?(slot: number, pass: number): readonly number[];
   noteMoved(group: number): void;
   markDirty(group: number): void;
   setMotion(index: number, dx: number, dy: number, drot: number): void;
+}
+
+/** Physics ticks per second for the position-history ring. */
+const HISTORY_HZ = 240;
+/** Default ring length: two seconds of 240 Hz samples. */
+const DEFAULT_HISTORY_LEN = HISTORY_HZ * 2;
+
+/**
+ * `getSpecialKey(group, b1, b2)` for enter-effect / AdvFollow copy lookup.
+ * [gdp GJBaseGameLayer::getSpecialKey :425770-425774]
+ */
+export function getSpecialKey(group: number, b1: boolean, b2: boolean): number {
+  return 100000000 + (b1 ? 10000000 : 0) + (b2 ? 1000000 : 0) + group;
+}
+
+export interface PositionHistorySnapshot {
+  samples: number;
+  rings: Map<number, { len: number; base: number; xy: Float32Array }>;
+  ring: Float32Array;
+  nextBase: number;
+}
+
+/** Per-target delayed positions for AdvFollow key 292. [gdp getSavedPosition :453471-453611] */
+export class PositionHistory {
+  private samples = 0;
+  private readonly rings = new Map<number, { len: number; base: number; xy: Float32Array }>();
+  private ring = new Float32Array(0);
+  private nextBase = 0;
+
+  capture(): PositionHistorySnapshot {
+    return {
+      samples: this.samples,
+      rings: new Map([...this.rings.entries()].map(([k, v]) => [k, { len: v.len, base: v.base, xy: v.xy }])),
+      ring: this.ring.slice(),
+      nextBase: this.nextBase,
+    };
+  }
+
+  restore(s: PositionHistorySnapshot): void {
+    this.samples = s.samples;
+    this.rings.clear();
+    for (const [k, v] of s.rings) this.rings.set(k, { len: v.len, base: v.base, xy: v.xy });
+    this.ring = s.ring.slice();
+    this.nextBase = s.nextBase;
+  }
+
+  /** Ensures target `id` (-1/-2/-3 or group) has a ring of at least `len` samples. */
+  ensure(id: number, len: number): void {
+    const need = Math.max(2, Math.ceil(len));
+    let r = this.rings.get(id);
+    if (r && r.len >= need) return;
+    const base = this.nextBase;
+    this.nextBase += need;
+    if (this.ring.length < this.nextBase * 2) {
+      const grown = new Float32Array(Math.max(this.nextBase * 2, this.ring.length * 2 || 64));
+      grown.set(this.ring);
+      this.ring = grown;
+    }
+    if (r) {
+      // Keep existing samples in the new longer slot.
+      for (let i = 0; i < r.len; i++) {
+        this.ring[(base + i) * 2] = this.ring[(r.base + i) * 2];
+        this.ring[(base + i) * 2 + 1] = this.ring[(r.base + i) * 2 + 1];
+      }
+    }
+    this.rings.set(id, { len: need, base, xy: this.ring });
+  }
+
+  /** One physics tick: write live positions for every registered target. */
+  record(host: AdvFollowHost): void {
+    if (this.rings.size === 0) return;
+    this.samples++;
+    for (const [id, r] of this.rings) {
+      const [x, y] = this.live(host, id);
+      const slot = r.base + (this.samples % r.len);
+      this.ring[slot * 2] = x;
+      this.ring[slot * 2 + 1] = y;
+    }
+  }
+
+  private live(host: AdvFollowHost, id: number): [number, number] {
+    if (id === -1) return host.player1();
+    if (id === -2) return host.player2() ?? [0, 0];
+    if (id === -3) return host.followPoint?.() ?? [0, 0];
+    const main = host.mainObject(id);
+    if (main < 0) return [0, 0];
+    return host.objectPosition(main);
+  }
+
+  /**
+   * Position of `id` `delay` seconds ago. Live when delay ≤ 0; (0,0) when the
+   * sample is older than the recorded history.
+   */
+  get(host: AdvFollowHost, id: number, delay: number): [number, number] {
+    if (!(delay > 0)) return this.live(host, id);
+    const frames = Math.max(0, delay * HISTORY_HZ);
+    const n = Math.ceil(frames);
+    if (n >= this.samples) return [0, 0];
+    const r = this.rings.get(id);
+    if (!r) return [0, 0];
+    let j = (this.samples % r.len) - n;
+    if (j < 0) j += r.len;
+    let k = j + 1;
+    if (k >= r.len) k = 0;
+    const t = n - frames;
+    const i0 = (r.base + j) * 2;
+    const i1 = (r.base + k) * 2;
+    const x0 = this.ring[i0];
+    const y0 = this.ring[i0 + 1];
+    const x1 = this.ring[i1];
+    const y1 = this.ring[i1 + 1];
+    return [x0 + (x1 - x0) * t, y0 + (y1 - y0) * t];
+  }
 }
 
 export function closestDirectionMod(x: number, m: number): number {
@@ -177,7 +304,17 @@ export function cloneAdvFollow(s: AdvFollowSnapshot): AdvFollowSnapshot {
     physics: new Map([...s.physics.entries()].map(([k, v]) => [k, clonePhysics(v)])),
     dirtySort: s.dirtySort,
     nextOrdinal: s.nextOrdinal,
+    history: {
+      samples: s.history.samples,
+      rings: new Map([...s.history.rings.entries()].map(([k, v]) => [k, { len: v.len, base: v.base, xy: v.xy }])),
+      ring: s.history.ring.slice(),
+      nextBase: s.history.nextBase,
+    },
   };
+}
+
+function emptyHistory(): PositionHistorySnapshot {
+  return { samples: 0, rings: new Map(), ring: new Float32Array(0), nextBase: 0 };
 }
 
 function followedTargetOf(spec: TriggerSpec): number {
@@ -212,6 +349,7 @@ export class AdvancedFollowSystem {
   private readonly stepMul = new Map<number, { sx: number; sy: number }>();
   private dirtySort = false;
   private nextOrdinal = 0;
+  readonly history = new PositionHistory();
 
   get active(): boolean {
     return this.instances.length > 0;
@@ -223,6 +361,7 @@ export class AdvancedFollowSystem {
       physics: this.physics,
       dirtySort: this.dirtySort,
       nextOrdinal: this.nextOrdinal,
+      history: this.history.capture(),
     });
   }
 
@@ -232,6 +371,7 @@ export class AdvancedFollowSystem {
     for (const [k, v] of s.physics) this.physics.set(k, clonePhysics(v));
     this.dirtySort = s.dirtySort;
     this.nextOrdinal = s.nextOrdinal;
+    this.history.restore(s.history ?? emptyHistory());
   }
 
   hash(): number {
@@ -256,6 +396,7 @@ export class AdvancedFollowSystem {
     const followedTarget = followedTargetOf(spec);
     const controlId = int(spec, 534);
     const key = `${spec.index}:${followerGroup}:${followedTarget}:${controlId}`;
+    this.ensureHistory(spec, followedTarget);
     for (const inst of this.instances) {
       if (instanceKey(inst) !== key) continue;
       inst.paused = false;
@@ -277,6 +418,12 @@ export class AdvancedFollowSystem {
       hasStarted: false,
     });
     this.dirtySort = true;
+  }
+
+  private ensureHistory(spec: TriggerSpec, followedTarget: number): void {
+    const delay = num(spec, 292) + Math.abs(num(spec, 293));
+    const len = delay > 0 ? Math.ceil(delay * HISTORY_HZ) + 2 : DEFAULT_HISTORY_LEN;
+    this.history.ensure(followedTarget, len);
   }
 
   control(triggerIndex: number, controlId: number, mode: number): void {
@@ -313,6 +460,7 @@ export class AdvancedFollowSystem {
   retarget(spec: TriggerSpec, host: AdvFollowHost): void {
     const newTarget = followedTargetOf(spec);
     if (newTarget === 0 && !flag(spec, 138) && !flag(spec, 200) && !flag(spec, 201)) return;
+    this.ensureHistory(spec, newTarget);
     const sel = host.grp(int(spec, 51));
     if (flag(spec, 535)) {
       for (const inst of this.instances) if (inst.controlId === sel) inst.followedTarget = newTarget;
@@ -329,6 +477,7 @@ export class AdvancedFollowSystem {
 
   step(dt240: number, frame: number, host: AdvFollowHost, rand: AreaRandom, rng: Lcg): void {
     if (this.instances.length === 0) return;
+    this.history.record(host);
     if (this.dirtySort) {
       this.instances.sort((a, b) => {
         const sa = host.specOf(a.triggerIndex);
@@ -393,15 +542,7 @@ export class AdvancedFollowSystem {
   }
 
   private savedPosition(host: AdvFollowHost, followedTarget: number, delay: number): [number, number] {
-    if (delay <= 0) {
-      if (followedTarget === -1) return host.player1();
-      if (followedTarget === -2) return host.player2() ?? [0, 0];
-      if (followedTarget === -3) return [0, 0];
-      const main = host.mainObject(followedTarget);
-      if (main < 0) return [0, 0];
-      return host.objectPosition(main);
-    }
-    return [0, 0];
+    return this.history.get(host, followedTarget, delay);
   }
 
   private skipTarget(followedTarget: number, delay: number, target: [number, number]): boolean {
@@ -423,18 +564,28 @@ export class AdvancedFollowSystem {
   ): void {
     const spec = host.specOf(inst.triggerIndex);
     if (!spec) return;
-    const members = host.groupMembers(inst.followerGroup);
-    for (const obj of members) {
-      const ph = this.getPhysics(obj, frame);
-      if (ph.lastStepFrame >= frame) continue;
-      if (settlePass) {
-        if (ph.lastMoveFrame < frame) {
-          ph.lastMoveFrame = frame;
-          host.setMotion(obj, 0, 0, 0);
+    // Enter-effect group copies: when the special-key map has an entry, walk
+    // the copy array over one or two passes instead of the plain group.
+    // [gdp processAdvancedFollowAction :453786-453818]
+    const special = getSpecialKey(inst.followerGroup, flag(spec, 280), flag(spec, 281));
+    const copySlot = host.enterCopySlot?.(special) ?? 0;
+    const passes = copySlot <= 0 ? 1 : 2;
+    for (let pass = 0; pass < passes; pass++) {
+      const members =
+        copySlot > 0 ? (host.copyGroupMembers?.(copySlot, pass) ?? []) : host.groupMembers(inst.followerGroup);
+      if (members.length === 0 && copySlot <= 0) continue;
+      for (const obj of members) {
+        const ph = this.getPhysics(obj, frame);
+        if (ph.lastStepFrame >= frame) continue;
+        if (settlePass) {
+          if (ph.lastMoveFrame < frame) {
+            ph.lastMoveFrame = frame;
+            host.setMotion(obj, 0, 0, 0);
+          }
+          continue;
         }
-        continue;
+        this.processObject(inst, spec, obj, ph, dt240, frame, host, rand, rng);
       }
-      this.processObject(inst, spec, obj, ph, dt240, frame, host, rand, rng);
     }
   }
 
