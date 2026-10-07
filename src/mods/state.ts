@@ -125,6 +125,13 @@ export const MODS: readonly ModDef[] = [
     value: { min: 0, max: 2, step: 0.1, initial: 0.3, suffix: "s" },
   },
   { id: "startposSwitcher", label: "StartPos Switcher", window: "level", kind: "toggle", tip: "Use the arrows at the bottom of the screen, or Q and E, to pick which start position you start from." },
+  {
+    id: "startposSpoofer",
+    label: "StartPos Spoofer",
+    window: "level",
+    kind: "action",
+    tip: "Press its key mid-level to add a start position where you are, keeping your mode, speed, direction and the rest. Use it with the StartPos Switcher. Leaving the level clears them.",
+  },
   { id: "ignoreEscape", label: "Ignore Escape", window: "level", kind: "toggle", tip: "Escape doesn't pause the level." },
   { id: "noParticles", label: "No Particles", window: "level", kind: "toggle", tip: "Hides the level's particles." },
   { id: "noShaders", label: "No Screen Effects", window: "level", kind: "toggle", tip: "Turns off the level's screen effects." },

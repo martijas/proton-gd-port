@@ -205,7 +205,7 @@ export class LevelAudio implements SoundSink {
     }
     this.music.stopAll();
     this.script = new AudioScript(this.triggerGroups);
-    if (sim.startPosition < 0) {
+    if (sim.startPosition < 0 && !sim.spoofedStart) {
       this.startLevelTrack(musicTime, musicTime <= 0 && this.level.header.fadeIn);
       this.drain.reset();
       return;

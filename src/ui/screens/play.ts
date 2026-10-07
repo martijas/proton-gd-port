@@ -170,7 +170,7 @@ export class PlayScreen implements Screen {
     // else: no best, no completion, no coins. Its jumps count all the same.
     // [gdp PlayLayer::destroyPlayer :93168, :93199-93203; levelComplete
     //  :92666-92696, :92772-92858]
-    const kept = sim.startPosition < 0;
+    const kept = sim.startPosition < 0 && !sim.spoofedStart;
     // An attempt a cheat or safe mode was on in keeps nothing at all, not
     // even the attempt itself (mods/state.ts).
     const saves = this.game.runSaves();
@@ -279,7 +279,7 @@ export class PlayScreen implements Screen {
     const sy = at[1] * h;
     if (sx > -200 && sx < w + 200 && !mods.on("hideAttempts") && !sim.triggers?.visual.options.hideAttempts) {
       const scale = scene.camera.zoomAt(scene.drawnAlpha);
-      out.push(label(art, `Attempt ${run.attempt}`, sx, sy, { scale, alpha: sim.startPosition >= 0 ? TEST_LABEL_ALPHA : undefined }));
+      out.push(label(art, `Attempt ${run.attempt}`, sx, sy, { scale, alpha: sim.startPosition >= 0 || sim.spoofedStart ? TEST_LABEL_ALPHA : undefined }));
     }
 
     // A platformer shows no progress: the bar never, and the label only as
@@ -314,7 +314,7 @@ export class PlayScreen implements Screen {
     // (0 is the level's own start) out of how many, between two arrows.
     const starts = hud && mods.on("startposSwitcher") ? this.game.startPositions() : [];
     if (starts.length > 0) {
-      const at = starts.indexOf(sim.startPosition) + 1;
+      const at = starts.indexOf(this.game.currentStart) + 1;
       out.push(...spriteButton(art, "startposPrev", w / 2 - STARTPOS_ARROW_GAP, STARTPOS_Y, FRAMES.arrowGreen, { scale: STARTPOS_ARROW_SCALE, sizeMult: 1.8 }));
       out.push(label(art, `${at}/${starts.length}`, w / 2, STARTPOS_Y, { scale: 0.6 }));
       out.push(...spriteButton(art, "startposNext", w / 2 + STARTPOS_ARROW_GAP, STARTPOS_Y, FRAMES.arrowGreen, { scale: STARTPOS_ARROW_SCALE, sizeMult: 1.8, flipX: true }));

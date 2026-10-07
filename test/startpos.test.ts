@@ -252,3 +252,35 @@ test("the warm-up is the same every time, and a snapshot after it rewinds as any
   assert.deepEqual([a.state.x, a.triggers.itemCount(1)], [x, item]);
   assert.equal(item, 1);
 });
+
+test("a start position spoofed mid-run comes back as it was, after the sim has run other attempts", () => {
+  // The StartPos Spoofer keeps a snapshot of the live sim, and the game loads
+  // it into that same sim later, whatever it has done since: rewound to its
+  // start and run again with other input.
+  const level = emptyLevel([
+    { id: 901, x: 300, y: 300, props: { 51: "2", 28: "0", 29: "60", 10: "0.5" } },
+    { id: 1, x: 3000, y: 300 },
+    start(150, { kA2: "1" }, 105),
+  ]);
+  level.objects[level.objects.length - 2].groups = [2];
+  const sim = makeSim(level);
+  const fresh = sim.snapshot();
+  const held = { ...NO_INPUT, jump: true };
+  stepN(sim, held, 40);
+  const spoof = sim.snapshot();
+  const block = level.objects.length - 2;
+  const now = () => ({ x: sim.state.x, y: sim.state.y, yVel: sim.state.yVel, mode: sim.state.mode, block: sim.triggers.objectPosition(block) });
+  const at = now();
+  assert.equal(at.mode, "ship");
+  assert.notEqual(at.yVel, 0, "taken mid-flight");
+  stepN(sim, held, 200);
+  sim.restore(fresh);
+  stepN(sim, NO_INPUT, 120);
+  sim.restore(spoof);
+  assert.deepEqual(now(), at, "the Move the later runs fired is undone");
+  stepN(sim, NO_INPUT, 90);
+  const replay = [sim.state.x, sim.state.y, sim.stateHash()];
+  sim.restore(spoof);
+  stepN(sim, NO_INPUT, 90);
+  assert.deepEqual([sim.state.x, sim.state.y, sim.stateHash()], replay);
+});

@@ -508,6 +508,7 @@ export class SimImpl implements Sim, PlayerWorld {
   private readonly startPos: StartPosition | null;
   /** See Sim.startPosition. */
   readonly startPosition: number;
+  spoofedStart = false;
   /** See Sim.startTime. */
   readonly startTime: number;
   /**

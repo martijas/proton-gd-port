@@ -99,6 +99,14 @@ export interface LevelRun {
   cheated: boolean;
 }
 
+/** A start position the StartPos Spoofer laid: the run as it stood, to start from again. */
+interface SpoofedStart {
+  key: number;
+  x: number;
+  sim: Sim;
+  snapshot: SimSnapshot;
+}
+
 /** A place a practice run, or a platformer's checkpoint object, can come back to. */
 export interface Checkpoint {
   snapshot: SimSnapshot;
@@ -178,9 +186,17 @@ export class Game {
   private startHold = 0;
   /** Set by fullReset for the restart it makes, as delayedFullReset sets +11736. */
   private replayPending = false;
-  /** The start position the StartPos Switcher picked, by object index, -1 for none; unset is the level's own. */
+  /**
+   * The start position the StartPos Switcher picked: an object index, -1 for
+   * none, or a spoofed one's key (-2 and down); unset is the level's own.
+   */
   private startPosChoice: number | undefined;
   private startPosList: { level: Level; indices: number[] } | null = null;
+  /** The StartPos Spoofer's start positions for this visit, which leaving the level drops. */
+  private spoofedStarts: SpoofedStart[] = [];
+  private nextSpoofKey = -2;
+  /** The start the attempt in progress began from, in the switcher's terms: see startPosChoice. */
+  currentStart = -1;
 
   constructor(readonly canvas: HTMLCanvasElement) {
     this.gl = new GlContext(canvas);
@@ -322,6 +338,7 @@ export class Game {
     this.run = { ...start, lastPercent: 0, attemptStartedAt: performance.now(), jumps: 0, attemptLabel: { x: 0, y: 0 }, attempt: 0, cheated: false };
     this.jumpsPending = 0;
     this.startPosChoice = undefined;
+    this.forgetSpoofedStarts();
     this.mods.levelEntered();
     // Guide art is baked into the draw list; read the options before the bake.
     const settings = this.save.get().settings;
@@ -416,7 +433,8 @@ export class Game {
     run.cheated = false;
     const seed = this.mods.seed() ?? (Math.random() * 0x7fffffff) | 0;
     let sim: Sim;
-    const warm = run.startState;
+    const spoof = this.mods.on("startposSwitcher") ? this.spoofedStarts.find((s) => s.key === this.startPosChoice) : undefined;
+    const warm = spoof ?? run.startState;
     if (warm) {
       // The attempt's own seed, drawn before the load, which does not carry
       // one. [gdp PlayLayer::resetLevel :105790-105797, then :105898-105905]
@@ -425,6 +443,10 @@ export class Game {
       sim.triggers.reseed(seed);
       sim.triggers.attempt = run.attempt;
       sim.setPractice(run.practice);
+      sim.spoofedStart = spoof !== undefined;
+      // A spoofed start is a snapshot from partway through a run, whose
+      // events this attempt must not count again.
+      if (spoof) sim.events.length = 0;
     } else {
       // The screen effects this visit's last attempt left, which the game
       // resets rather than rebuilds, so some of them carry over.
@@ -444,6 +466,7 @@ export class Game {
       });
       if (sim.startPosition >= 0) run.startState = { sim, snapshot: sim.snapshot() };
     }
+    this.currentStart = spoof ? spoof.key : sim.startPosition;
     this.sim = sim;
     this.eventCursor = 0;
     this.checkpoints.length = 0;
@@ -498,7 +521,10 @@ export class Game {
     sim.finishNow();
   }
 
-  /** The level's start positions by object index, left to right. */
+  /**
+   * The start positions the switcher steps through, left to right: the
+   * level's own by object index, and the spoofed ones by key.
+   */
   startPositions(): number[] {
     const level = this.run?.level;
     if (!level) return [];
@@ -506,7 +532,32 @@ export class Game {
       const found = level.objects.filter((o) => o.id === START_POS_ID).sort((a, b) => a.x - b.x || a.index - b.index);
       this.startPosList = { level, indices: found.map((o) => o.index) };
     }
-    return this.startPosList.indices;
+    if (this.spoofedStarts.length === 0) return this.startPosList.indices;
+    const all = [
+      ...this.startPosList.indices.map((key) => ({ key, x: level.objects[key].x })),
+      ...this.spoofedStarts.map(({ key, x }) => ({ key, x })),
+    ];
+    return all.sort((a, b) => a.x - b.x).map((s) => s.key);
+  }
+
+  /**
+   * The StartPos Spoofer: a start position where the player is now, keeping
+   * the whole run as it stands, for the switcher to start from. Refused while
+   * dead, finished, or anywhere but in play. Returns where it sits in the
+   * switcher's list, from 1, or 0 when refused.
+   */
+  addSpoofedStart(): number {
+    const sim = this.sim;
+    if (!sim || !this.run || this.stack.top?.name !== "play" || sim.state.dead || sim.state.finished) return 0;
+    const key = this.nextSpoofKey--;
+    this.spoofedStarts.push({ key, x: sim.state.x, sim, snapshot: sim.snapshot() });
+    return this.startPositions().indexOf(key) + 1;
+  }
+
+  private forgetSpoofedStarts(): void {
+    this.spoofedStarts = [];
+    this.nextSpoofKey = -2;
+    this.currentStart = -1;
   }
 
   /**
@@ -519,7 +570,7 @@ export class Game {
     const all = this.startPositions();
     if (!run || all.length === 0) return false;
     const choices = [-1, ...all];
-    const current = choices.indexOf(this.sim?.startPosition ?? -1);
+    const current = choices.indexOf(this.currentStart);
     this.startPosChoice = choices[(current + step + choices.length) % choices.length];
     run.startState = null;
     this.restart();
@@ -704,6 +755,7 @@ export class Game {
     this.mods.levelEnded();
     this.sim = null;
     this.run = null;
+    this.forgetSpoofedStarts();
     this.startHold = 0;
     // Leaving drops the jumps no death or finish has added yet.
     this.jumpsPending = 0;

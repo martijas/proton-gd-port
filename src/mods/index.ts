@@ -174,6 +174,19 @@ export class Mods {
 
   private action(id: string): void {
     if (id === "instantComplete") this.game?.instantComplete();
+    if (id === "startposSpoofer") this.spoofStart();
+  }
+
+  private spoofStart(): void {
+    const game = this.game;
+    if (!game) return;
+    const at = game.addSpoofedStart();
+    if (at === 0) {
+      game.say("You can only add a start position while playing.");
+      return;
+    }
+    const total = game.startPositions().length;
+    game.say(this.on("startposSwitcher") ? `Start position ${at} of ${total} added` : `Start position added. Turn on StartPos Switcher to use it.`);
   }
 
   private focus(focused: boolean): void {
@@ -203,7 +216,7 @@ export class Mods {
     if (all.length === 0) return "This level has no start positions.";
     // The switcher at the foot of the screen says it already, unless the HUD is hidden.
     if (!this.on("hideHud")) return null;
-    const at = all.indexOf(game.sim?.startPosition ?? -1);
+    const at = all.indexOf(game.currentStart);
     return at < 0 ? `Starting from the start (${all.length} start positions)` : `Start position ${at + 1} of ${all.length}`;
   }
 

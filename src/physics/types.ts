@@ -463,6 +463,12 @@ export interface Sim {
    */
   readonly startPosition: number;
   /**
+   * This attempt began from a start position the mod menu's StartPos Spoofer
+   * laid (a snapshot of a run), which keeps no progress either. The game sets
+   * it at each restart; nothing in a snapshot carries it.
+   */
+  spoofedStart: boolean;
+  /**
    * Seconds the warm-up to the start position ran the music clock (+800);
    * 0 without one. The music starts there. The level time (item type 4)
    * starts at 0 either way.
